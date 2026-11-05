@@ -10,8 +10,24 @@ from .embeds import (
     build_milestone_reminder_embed,
 )
 
-from .modals import WishlistModal, AnonymousMessageModal, SetupModal
-from .views import RegistrationView, SantaDmView, BabyReplyView, PollView
+from .modals import (
+    WishlistModal,
+    AnonymousMessageModal,
+    SetupModal,
+    CreatePollModal,
+    DeadlineModal,
+    RemindNoteModal,
+)
+from .views import (
+    RegistrationView,
+    SantaDmView,
+    BabyReplyView,
+    PollView,
+    ExclusionManageView,
+    RemindMenuView,
+    HostControlPanel,
+    MyStatusView,
+)
 
 __all__ = [
     "build_registration_embed",
@@ -25,10 +41,19 @@ __all__ = [
     "WishlistModal",
     "AnonymousMessageModal",
     "SetupModal",
+    "CreatePollModal",
+    "DeadlineModal",
+    "RemindNoteModal",
     "RegistrationView",
     "SantaDmView",
     "BabyReplyView",
     "PollView",
+    "ExclusionManageView",
+    "RemindMenuView",
+    "HostControlPanel",
+    "MyStatusView",
 ]
+
+
 
 

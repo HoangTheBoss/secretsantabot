@@ -120,10 +120,10 @@ CREATE TABLE IF NOT EXISTS relay_messages (
 
 ### 4.1 Channel Hub & Polling
 - All public interactions are locked to the configured `SANTA_CHANNEL_ID`.
-- Polling commands allow the host to post interactive vote embeds:
-  - `/secretsanta poll question:"Gift Budget?" options:"$20, $30, $40"`
-  - `/secretsanta poll question:"Party Date?" options:"Dec 20, Dec 21, Dec 22"`
-- Host can finalize and lock the chosen budget and date into the session.
+- **Interactive Modals:**
+  - Running `/secretsanta poll` opens the **CreatePollModal**, where the host enters the question and choices (one per line).
+  - The bot renders an interactive button poll supporting 2 to 5 options.
+  - Votes are tracked per member and update live on the button labels.
 
 ### 4.2 Registration & Modals
 - Main Channel Embed features:
@@ -136,8 +136,19 @@ CREATE TABLE IF NOT EXISTS relay_messages (
   - **[Leave ❌] Button**: Allows withdrawing before the draw.
 
 ### 4.3 Exclusion Management
-- `/secretsanta exclude user_a:@Alice user_b:@Bob`
-- Ensures neither person can draw the other.
+- Host can run `/secretsanta exclude` without arguments to open the **ExclusionManageView**, which features a native `UserSelect` dropdown to pick 2 members visually.
+- Exclusions can also be cleared with a single click.
+
+### 4.4 All-in-One Host Control Panel (`/secretsanta panel`)
+- Host can run `/secretsanta panel` to open a unified interactive dashboard featuring:
+  - `[ ⚙️ Settings ]`: Opens `SetupModal`
+  - `[ 📊 Create Poll ]`: Opens `CreatePollModal`
+  - `[ ⏰ Set Deadline ]`: Opens `DeadlineModal`
+  - `[ 🚫 Exclusions ]`: Opens `ExclusionManageView`
+  - `[ 📢 Reminders ]`: Opens `RemindMenuView`
+  - `[ 🔒 Master Sheet ]`: Displays secret cheat sheet
+  - `[ 🎲 Draw Pairs ]`: Manually executes the draw
+
 
 ### 4.4 Matching & Secret DM Dispatch
 - **Manual Draw:** The host can manually execute the draw anytime using `/secretsanta draw`.

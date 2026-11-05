@@ -11,7 +11,13 @@ Built with **Python 3.13+**, **`discord.py`**, and **`aiosqlite`**.
 ## 🎯 Bot Scope & Philosophy
 
 - **Digital Coordination, Human Gathering:** Automate everything leading up to the party date so organizers don't have to juggle spreadsheets or draw paper slips. Once everyone arrives at the party with wrapped gifts in hand, the group puts phones away and enjoys the unboxing in person!
+- **UI-First & Modal-Driven Workflow:**
+  - **Interactive Modals:** Clean pop-up forms for setup (`/secretsanta setup`), poll creation (`/secretsanta poll`), deadlines (`/secretsanta set_deadline`), and wishlists.
+  - **Native Member Pickers:** Visual `UserSelect` dropdown to select couple/roommate exclusions with zero typing.
+  - **All-in-One Control Panel (`/secretsanta panel`):** Interactive master control board with buttons to manage settings, polls, deadlines, exclusions, reminders, and draws without memorizing commands.
+  - **Interactive Status Dashboard:** `/my_status` includes a 1-click `[Edit Wishlist 📝]` button.
 - **Channel Hub:** Bound to a single dedicated `#secret-santa` channel for announcements, polls, and live countdowns.
+
 - **Vietnam Timezone & Deadlines (`Asia/Ho_Chi_Minh` / UTC+7):**
   - All naive dates and times default automatically to Vietnam Time (ICT / GMT+7).
   - Relative deadlines (e.g., `3d`, `7 days`, `24h`) and absolute dates (`2026-12-10 20:00`, `Dec 15`) are converted to epoch timestamps with Discord dynamic timezone tags (`<t:TIMESTAMP:F>` and `<t:TIMESTAMP:R>`).

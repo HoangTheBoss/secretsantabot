@@ -273,3 +273,279 @@ class PollView(discord.ui.View):
                 idx = int(child.custom_id.split(":")[-1])
                 opt_name = self.options[idx]
                 child.label = f"{opt_name} ({counts[idx]})"
+
+
+class ExclusionManageView(discord.ui.View):
+    """Interactive view for managing pair exclusions using Discord's native UserSelect component."""
+
+    def __init__(self, repo: "SantaRepository", session_id: int):
+        super().__init__(timeout=300)
+        self.repo = repo
+        self.session_id = session_id
+
+        self.user_select = discord.ui.UserSelect(
+            placeholder="Select 2 members who cannot draw each other...",
+            min_values=2,
+            max_values=2,
+        )
+        self.user_select.callback = self._on_users_selected
+        self.add_item(self.user_select)
+
+    async def _on_users_selected(self, interaction: discord.Interaction):
+        selected_users = self.user_select.values
+        if len(selected_users) != 2:
+            await interaction.response.send_message("⚠️ Please select exactly 2 members.", ephemeral=True)
+            return
+
+        u1, u2 = selected_users[0], selected_users[1]
+        if u1.id == u2.id:
+            await interaction.response.send_message("❌ Cannot exclude a user from themselves.", ephemeral=True)
+            return
+
+        await self.repo.add_exclusion(self.session_id, u1.id, u2.id)
+        embed = await self.build_exclusions_embed(interaction.guild)
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="Clear All Exclusions 🗑️", style=discord.ButtonStyle.danger, row=1)
+    async def clear_exclusions_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        exclusions = await self.repo.get_exclusions(self.session_id)
+        for a, b in exclusions:
+            await self.repo.remove_exclusion(self.session_id, a, b)
+        embed = await self.build_exclusions_embed(interaction.guild)
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    async def build_exclusions_embed(self, guild: Optional[discord.Guild]) -> discord.Embed:
+        exclusions = await self.repo.get_exclusions(self.session_id)
+        embed = discord.Embed(
+            title="🚫 Pair Exclusion Rules",
+            description="Use the dropdown below to select 2 members (e.g. couples/roommates) who **cannot** be paired together.",
+            color=discord.Color.orange(),
+        )
+        if not exclusions:
+            embed.add_field(name="Current Exclusions", value="*No exclusion rules set yet.*", inline=False)
+        else:
+            lines = []
+            for a_id, b_id in exclusions:
+                m_a = guild.get_member(a_id) if guild else None
+                m_b = guild.get_member(b_id) if guild else None
+                name_a = m_a.display_name if m_a else f"User {a_id}"
+                name_b = m_b.display_name if m_b else f"User {b_id}"
+                lines.append(f"• **{name_a}** ⛔ **{name_b}**")
+            embed.add_field(name=f"Current Exclusions ({len(exclusions)})", value="\n".join(lines), inline=False)
+
+        embed.set_footer(text="Select 2 members from the dropdown to add a rule.")
+        return embed
+
+
+class RemindMenuView(discord.ui.View):
+    """Interactive view for triggering channel and DM reminders."""
+
+    def __init__(self, repo: "SantaRepository", session_id: int):
+        super().__init__(timeout=180)
+        self.repo = repo
+        self.session_id = session_id
+
+    @discord.ui.button(label="📢 Broadcast Channel Reminder", style=discord.ButtonStyle.primary, row=0)
+    async def broadcast_channel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        from src.ui.modals import RemindNoteModal
+        from src.ui.embeds import build_public_reminder_embed
+
+        async def callback(modal_interaction: discord.Interaction, note: Optional[str]):
+            session = await self.repo.get_session_by_id(self.session_id)
+            if not session:
+                await modal_interaction.response.send_message("❌ Session not found.", ephemeral=True)
+                return
+
+            participants = await self.repo.get_all_participants(self.session_id)
+            embed = build_public_reminder_embed(session, participants, custom_note=note)
+
+            target_channel = modal_interaction.client.get_channel(session.get("channel_id"))
+            if not target_channel:
+                try:
+                    target_channel = await modal_interaction.client.fetch_channel(session.get("channel_id"))
+                except Exception:
+                    target_channel = modal_interaction.channel
+
+            if isinstance(target_channel, discord.TextChannel):
+                await target_channel.send(embed=embed)
+                await self.repo.update_session_reminded(self.session_id)
+                await modal_interaction.response.send_message(
+                    f"✅ **Announcement broadcast to {target_channel.mention}!**", ephemeral=True
+                )
+            else:
+                await modal_interaction.response.send_message("❌ Could not reach text channel.", ephemeral=True)
+
+        modal = RemindNoteModal(title="Channel Announcement Note", on_submit_callback=callback)
+        await interaction.response.send_modal(modal)
+
+    @discord.ui.button(label="📩 Nudge Unwrapped Santas (DMs)", style=discord.ButtonStyle.secondary, row=0)
+    async def nudge_dms_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        from src.ui.modals import RemindNoteModal
+        from src.ui.embeds import build_dm_reminder_embed
+
+        session = await self.repo.get_session_by_id(self.session_id)
+        if not session or session.get("status") != "IN_PROGRESS":
+            await interaction.response.send_message(
+                "⚠️ Pairings have not been drawn yet! Use the channel reminder button instead.",
+                ephemeral=True,
+            )
+            return
+
+        async def callback(modal_interaction: discord.Interaction, note: Optional[str]):
+            await modal_interaction.response.defer(thinking=True, ephemeral=True)
+            unwrapped = await self.repo.get_unwrapped_pairings(self.session_id)
+            if not unwrapped:
+                await modal_interaction.followup.send(
+                    "🎉 **All Santas have already marked their gifts as wrapped!** No DMs needed."
+                )
+                return
+
+            sent_count = 0
+            failed_names = []
+            for p in unwrapped:
+                santa_id = p["santa_id"]
+                try:
+                    user = await modal_interaction.client.fetch_user(santa_id)
+                    embed = build_dm_reminder_embed(
+                        baby_name=p["baby_name"],
+                        gift_tag_code=p["gift_tag_code"],
+                        party_date=session.get("party_date"),
+                        party_venue=session.get("party_venue"),
+                        custom_note=note,
+                    )
+                    view = SantaDmView(repo=self.repo, session_id=self.session_id, baby_id=p["baby_id"])
+                    await user.send(embed=embed, view=view)
+                    await self.repo.update_pairing_reminded(self.session_id, santa_id)
+                    sent_count += 1
+                except Exception:
+                    failed_names.append(p.get("santa_name", str(santa_id)))
+
+            msg = f"✅ **Sent private reminder DMs to {sent_count} unwrapped Santa(s).**"
+            if failed_names:
+                msg += f"\n⚠️ DMs failed for: {', '.join(failed_names)}"
+            await modal_interaction.followup.send(msg)
+
+        modal = RemindNoteModal(title="Custom Note for Santa DMs", on_submit_callback=callback)
+        await interaction.response.send_modal(modal)
+
+
+class HostControlPanel(discord.ui.View):
+    """All-in-one interactive control dashboard for the event host."""
+
+    def __init__(self, repo: "SantaRepository", session_id: int):
+        super().__init__(timeout=300)
+        self.repo = repo
+        self.session_id = session_id
+
+    @discord.ui.button(label="⚙️ Settings", style=discord.ButtonStyle.primary, row=0)
+    async def settings_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        from src.ui.modals import SetupModal
+
+        session = await self.repo.get_session_by_id(self.session_id)
+        if not session:
+            return
+        modal = SetupModal(
+            repo=self.repo,
+            session_id=self.session_id,
+            channel_id=session.get("channel_id") or interaction.channel_id,
+            existing_budget=session.get("budget") or "",
+            existing_party_date=session.get("party_date") or "",
+            existing_party_venue=session.get("party_venue") or "",
+            existing_deadline=session.get("signup_deadline") or "",
+        )
+        await interaction.response.send_modal(modal)
+
+    @discord.ui.button(label="📊 Create Poll", style=discord.ButtonStyle.secondary, row=0)
+    async def poll_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        from src.ui.modals import CreatePollModal
+
+        session = await self.repo.get_session_by_id(self.session_id)
+        ch_id = session.get("channel_id") if session else interaction.channel_id
+        modal = CreatePollModal(target_channel_id=ch_id)
+        await interaction.response.send_modal(modal)
+
+    @discord.ui.button(label="⏰ Set Deadline", style=discord.ButtonStyle.secondary, row=0)
+    async def deadline_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        from src.ui.modals import DeadlineModal
+
+        session = await self.repo.get_session_by_id(self.session_id)
+        modal = DeadlineModal(
+            repo=self.repo,
+            session_id=self.session_id,
+            existing_deadline=session.get("signup_deadline") if session else "",
+        )
+        await interaction.response.send_modal(modal)
+
+    @discord.ui.button(label="🚫 Exclusions", style=discord.ButtonStyle.secondary, row=1)
+    async def exclusions_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        view = ExclusionManageView(self.repo, self.session_id)
+        embed = await view.build_exclusions_embed(interaction.guild)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+    @discord.ui.button(label="📢 Reminders", style=discord.ButtonStyle.secondary, row=1)
+    async def reminders_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        view = RemindMenuView(self.repo, self.session_id)
+        await interaction.response.send_message(
+            "📢 **Reminder Center:** Choose an action below:",
+            view=view,
+            ephemeral=True,
+        )
+
+    @discord.ui.button(label="🔒 Master Sheet", style=discord.ButtonStyle.secondary, row=1)
+    async def export_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        from src.ui.embeds import build_admin_export_embed
+
+        pairings = await self.repo.get_all_pairings(self.session_id)
+        embed = build_admin_export_embed(pairings)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @discord.ui.button(label="🎲 Draw Pairs", style=discord.ButtonStyle.success, row=2)
+    async def draw_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        from src.services.draw_service import execute_draw
+
+        session = await self.repo.get_session_by_id(self.session_id)
+        if not session:
+            return
+
+        if session.get("status") == "IN_PROGRESS":
+            await interaction.response.send_message(
+                "⚠️ Pairings have already been drawn for this event!", ephemeral=True
+            )
+            return
+
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        success, msg, _ = await execute_draw(
+            interaction.client, self.repo, self.session_id, trigger_type="MANUAL"
+        )
+        if success:
+            await interaction.followup.send("🎉 **Secret Santa Draw executed successfully!** Targets dispatched in DM.")
+        else:
+            await interaction.followup.send(f"❌ {msg}")
+
+
+class MyStatusView(discord.ui.View):
+    """View attached to /my_status giving the user an interactive button to edit their wishlist."""
+
+    def __init__(self, repo: "SantaRepository", session_id: int):
+        super().__init__(timeout=180)
+        self.repo = repo
+        self.session_id = session_id
+
+    @discord.ui.button(label="Edit Wishlist 📝", style=discord.ButtonStyle.primary)
+    async def edit_wishlist_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        from src.ui.modals import WishlistModal
+
+        participant = await self.repo.get_participant(self.session_id, interaction.user.id)
+        if not participant:
+            await interaction.response.send_message("ℹ️ You are not registered yet.", ephemeral=True)
+            return
+
+        modal = WishlistModal(
+            repo=self.repo,
+            session_id=self.session_id,
+            existing_wishlist=participant.get("wishlist", ""),
+            existing_dislikes=participant.get("dislikes", ""),
+            existing_notes=participant.get("offline_notes", ""),
+        )
+        await interaction.response.send_modal(modal)
+

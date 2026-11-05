@@ -48,8 +48,11 @@ class UserCog(commands.Cog):
         embed.add_field(name="Your Dislikes", value=dislikes[:200], inline=False)
         embed.add_field(name="Your Party Notes", value=notes[:200], inline=False)
 
-        embed.set_footer(text="Use /update_wishlist if you want to make any changes!")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        embed.set_footer(text="Click [Edit Wishlist 📝] below or use /update_wishlist to make changes anytime!")
+        from src.ui.views import MyStatusView
+        view = MyStatusView(repo=self.repo, session_id=session["id"])
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
 
     @app_commands.command(name="update_wishlist", description="Open modal to update your Secret Santa wishlist and party notes.")
     async def update_wishlist(self, interaction: discord.Interaction):

@@ -120,18 +120,28 @@ class AdminCog(commands.Cog):
 
 
 
-    @group.command(name="poll", description="Post an interactive voting poll in the channel.")
+    @group.command(name="poll", description="Post an interactive voting poll (opens modal if options left empty).")
     @is_admin()
     @app_commands.describe(
-        question="The question to ask (e.g. Budget limit? or Party Date?)",
-        options="Comma-separated options (e.g. '$20, $30, $40' or 'Dec 20, Dec 21')",
+        question="Poll question (leave empty to open interactive modal)",
+        options="Comma-separated options (leave empty to open interactive modal)",
     )
     async def run_poll(
         self,
         interaction: discord.Interaction,
-        question: str,
-        options: str,
+        question: Optional[str] = None,
+        options: Optional[str] = None,
     ):
+        session = await self.repo.get_active_session(interaction.guild_id)
+        ch_id = session.get("channel_id") if session else interaction.channel_id
+
+        if not question or not options:
+            from src.ui.modals import CreatePollModal
+
+            modal = CreatePollModal(target_channel_id=ch_id)
+            await interaction.response.send_modal(modal)
+            return
+
         opts = [o.strip() for o in options.split(",") if o.strip()]
         if len(opts) < 2:
             await interaction.response.send_message(
@@ -149,6 +159,7 @@ class AdminCog(commands.Cog):
 
         view = PollView(question=question, options=opts)
         await interaction.response.send_message(embed=embed, view=view)
+
 
     @group.command(name="set_details", description="Update budget, date, or venue for the active session.")
     @is_admin()
@@ -183,16 +194,16 @@ class AdminCog(commands.Cog):
             ephemeral=True,
         )
 
-    @group.command(name="set_deadline", description="Set or change the sign-up deadline and automatic draw schedule.")
+    @group.command(name="set_deadline", description="Set or change the sign-up deadline (opens modal if empty).")
     @is_admin()
     @app_commands.describe(
-        deadline="Deadline string (e.g. '3d', '7 days', '2026-12-10 20:00')",
+        deadline="Deadline string e.g. '3d' or '2026-12-10 20:00' (leave empty to open modal)",
         auto_draw="Automatically execute the draw when the deadline arrives",
     )
     async def set_deadline(
         self,
         interaction: discord.Interaction,
-        deadline: str,
+        deadline: Optional[str] = None,
         auto_draw: bool = True,
     ):
         session = await self.repo.get_active_session(interaction.guild_id)
@@ -202,6 +213,17 @@ class AdminCog(commands.Cog):
 
         if session.get("status") != "REGISTRATION":
             await interaction.response.send_message("⚠️ Sign-ups are already closed for this event.", ephemeral=True)
+            return
+
+        if not deadline:
+            from src.ui.modals import DeadlineModal
+
+            modal = DeadlineModal(
+                repo=self.repo,
+                session_id=session["id"],
+                existing_deadline=session.get("signup_deadline") or "",
+            )
+            await interaction.response.send_modal(modal)
             return
 
         try:
@@ -229,33 +251,105 @@ class AdminCog(commands.Cog):
             ephemeral=True,
         )
 
+        # Refresh channel registration card in-place
+        session_updated = await self.repo.get_session_by_id(session["id"])
+        if session_updated and session_updated.get("channel_id"):
+            ch = interaction.client.get_channel(session_updated["channel_id"])
+            msg_id = session_updated.get("registration_message_id")
+            if ch and msg_id and isinstance(ch, discord.TextChannel):
+                try:
+                    msg = await ch.fetch_message(msg_id)
+                    parts = await self.repo.get_all_participants(session["id"])
+                    emb = build_registration_embed(session_updated, parts)
+                    view = RegistrationView(self.repo, session["id"])
+                    await msg.edit(embed=emb, view=view)
+                except Exception:
+                    pass
 
-    @group.command(name="exclude", description="Prevent two participants from drawing each other (e.g. couples).")
+
+
+    @group.command(name="exclude", description="Manage pair exclusions (opens interactive member picker if empty).")
     @is_admin()
     @app_commands.describe(
-        user_a="First participant",
-        user_b="Second participant",
+        user_a="First participant (leave empty for interactive picker)",
+        user_b="Second participant (leave empty for interactive picker)",
     )
     async def add_exclusion(
         self,
         interaction: discord.Interaction,
-        user_a: discord.Member,
-        user_b: discord.Member,
+        user_a: Optional[discord.Member] = None,
+        user_b: Optional[discord.Member] = None,
     ):
-        if user_a.id == user_b.id:
-            await interaction.response.send_message("❌ Cannot exclude a user from themselves.", ephemeral=True)
-            return
-
         session = await self.repo.get_active_session(interaction.guild_id)
         if not session:
             await interaction.response.send_message("❌ No active Secret Santa session found.", ephemeral=True)
             return
 
+        from src.ui.views import ExclusionManageView
+
+        view = ExclusionManageView(self.repo, session["id"])
+
+        if not user_a or not user_b:
+            embed = await view.build_exclusions_embed(interaction.guild)
+            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+            return
+
+        if user_a.id == user_b.id:
+            await interaction.response.send_message("❌ Cannot exclude a user from themselves.", ephemeral=True)
+            return
+
         await self.repo.add_exclusion(session["id"], user_a.id, user_b.id)
+        embed = await view.build_exclusions_embed(interaction.guild)
         await interaction.response.send_message(
-            f"✅ **Exclusion added:** {user_a.mention} and {user_b.mention} will not be paired together.",
+            f"✅ **Exclusion added between {user_a.mention} and {user_b.mention}!**",
+            embed=embed,
+            view=view,
             ephemeral=True,
         )
+
+    @group.command(name="panel", description="Open the all-in-one interactive host control panel.")
+    @is_admin()
+    async def control_panel(self, interaction: discord.Interaction):
+        session = await self.repo.get_active_session(interaction.guild_id)
+        if not session:
+            await interaction.response.send_message(
+                "❌ No active Secret Santa session found. Run `/secretsanta setup` to start!",
+                ephemeral=True,
+            )
+            return
+
+        from src.ui.views import HostControlPanel
+
+        participants = await self.repo.get_all_participants(session["id"])
+        total = len(participants)
+        wrapped = sum(1 for p in participants if p.get("gift_status") in ("WRAPPED", "READY", "AT_PARTY"))
+
+        embed = discord.Embed(
+            title="🎛️ Secret Santa Host Control Dashboard",
+            description=(
+                "Welcome to the host control center! Use the interactive buttons below "
+                "to manage your Secret Santa event with zero slash-command memorization."
+            ),
+            color=discord.Color.gold(),
+        )
+        embed.add_field(name="Status", value=f"`{session.get('status')}`", inline=True)
+        embed.add_field(name="Budget", value=f"`{session.get('budget') or 'Unset'}`", inline=True)
+        embed.add_field(name="Party Date", value=f"`{session.get('party_date') or 'Unset'}`", inline=True)
+        embed.add_field(name="Venue", value=f"`{session.get('party_venue') or 'Unset'}`", inline=True)
+        embed.add_field(name="Confirmed Santas", value=f"**{total} members**", inline=True)
+        embed.add_field(name="Gifts Wrapped", value=f"**{wrapped}/{total}**", inline=True)
+
+        deadline_epoch = session.get("signup_deadline_epoch")
+        if deadline_epoch:
+            embed.add_field(
+                name="⏰ Sign-Up Deadline",
+                value=f"<t:{deadline_epoch}:F>\n⏳ <t:{deadline_epoch}:R>",
+                inline=False,
+            )
+
+        view = HostControlPanel(self.repo, session["id"])
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
 
     @group.command(name="unexclude", description="Remove an existing exclusion between two participants.")
     @is_admin()
