@@ -140,3 +140,39 @@ async def test_exclusion_manage_view_and_embed_chunking(temp_repo):
     # Since chunk_size is 15, 30 lines should split into 2 fields
     assert len(embed.fields) == 2
     assert "Exclusions (cont.)" in embed.fields[1].name
+
+
+async def test_exclusion_manage_view_button_callbacks_signature(temp_repo):
+    from unittest.mock import AsyncMock
+
+    session_id = await temp_repo.create_session(guild_id=1, channel_id=2)
+    await temp_repo.add_exclusion(session_id, 10, 20)
+
+    mock_guild = MagicMock(spec=discord.Guild)
+    mock_guild.get_member.return_value = None
+
+    view = ExclusionManageView(temp_repo, session_id)
+    await view.setup_components(mock_guild)
+
+    # Mock interaction
+    mock_interaction = MagicMock(spec=discord.Interaction)
+    mock_interaction.guild = mock_guild
+    mock_interaction.response = MagicMock()
+    mock_interaction.response.edit_message = AsyncMock()
+    mock_interaction.response.send_modal = AsyncMock()
+
+    # 1. Test _on_refresh_button called with single argument (as discord.py does)
+    await view._on_refresh_button(mock_interaction)
+    mock_interaction.response.edit_message.assert_called_once()
+    mock_interaction.response.edit_message.reset_mock()
+
+    # 2. Test _on_clear_button called with single argument
+    await view._on_clear_button(mock_interaction)
+    mock_interaction.response.edit_message.assert_called_once()
+    assert "Cleared all 1 exclusion rules" in mock_interaction.response.edit_message.call_args[1]["content"]
+    mock_interaction.response.edit_message.reset_mock()
+
+    # 3. Test _on_bulk_button called with single argument
+    await view._on_bulk_button(mock_interaction)
+    mock_interaction.response.send_modal.assert_called_once()
+

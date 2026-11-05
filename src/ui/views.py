@@ -2,7 +2,7 @@
 
 import discord
 import logging
-from typing import TYPE_CHECKING, Optional, Callable
+from typing import TYPE_CHECKING, Optional, Callable, Any
 from src.config import SANTA_CHANNEL_ID
 
 if TYPE_CHECKING:
@@ -368,7 +368,7 @@ class ExclusionManageView(discord.ui.View):
         refresh_btn.callback = self._on_refresh_button
         self.add_item(refresh_btn)
 
-    async def _on_users_selected(self, interaction: discord.Interaction):
+    async def _on_users_selected(self, interaction: discord.Interaction, select: Optional[Any] = None):
         selected_users = self.user_select.values
         if len(selected_users) < 2:
             await interaction.response.send_message("⚠️ Please select at least 2 members.", ephemeral=True)
@@ -389,7 +389,7 @@ class ExclusionManageView(discord.ui.View):
 
         await interaction.response.edit_message(content=conf, embed=embed, view=self)
 
-    async def _on_remove_selected(self, interaction: discord.Interaction):
+    async def _on_remove_selected(self, interaction: discord.Interaction, select: Optional[Any] = None):
         remove_sel = getattr(self, "remove_select", None)
         values = remove_sel.values if remove_sel else []
         if not values:
@@ -407,13 +407,13 @@ class ExclusionManageView(discord.ui.View):
             view=self,
         )
 
-    async def _on_bulk_button(self, interaction: discord.Interaction):
+    async def _on_bulk_button(self, interaction: discord.Interaction, button: Optional[Any] = None):
         from src.ui.modals import BulkExclusionModal
 
         modal = BulkExclusionModal(self.repo, self.session_id)
         await interaction.response.send_modal(modal)
 
-    async def _on_clear_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def _on_clear_button(self, interaction: discord.Interaction, button: Optional[Any] = None):
         count = await self.repo.clear_all_exclusions(self.session_id)
         await self.setup_components(interaction.guild)
         embed = await self.build_exclusions_embed(interaction.guild)
@@ -423,7 +423,7 @@ class ExclusionManageView(discord.ui.View):
             view=self,
         )
 
-    async def _on_refresh_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def _on_refresh_button(self, interaction: discord.Interaction, button: Optional[Any] = None):
         await self.setup_components(interaction.guild)
         embed = await self.build_exclusions_embed(interaction.guild)
         await interaction.response.edit_message(embed=embed, view=self)
