@@ -1,0 +1,42 @@
+"""Configuration management using environment variables."""
+
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load .env file from project root
+load_dotenv()
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
+
+# Server & Channel Binding
+GUILD_ID_RAW = os.getenv("GUILD_ID", "0")
+SANTA_CHANNEL_ID_RAW = os.getenv("SANTA_CHANNEL_ID", "0")
+SANTA_ADMIN_ROLE_ID_RAW = os.getenv("SANTA_ADMIN_ROLE_ID", "0")
+
+try:
+    GUILD_ID = int(GUILD_ID_RAW)
+except ValueError:
+    GUILD_ID = 0
+
+try:
+    SANTA_CHANNEL_ID = int(SANTA_CHANNEL_ID_RAW)
+except ValueError:
+    SANTA_CHANNEL_ID = 0
+
+try:
+    SANTA_ADMIN_ROLE_ID = int(SANTA_ADMIN_ROLE_ID_RAW)
+except ValueError:
+    SANTA_ADMIN_ROLE_ID = 0
+
+# Database path
+DATABASE_PATH = os.getenv("DATABASE_PATH", str(BASE_DIR / "data" / "secretsanta.db"))
+
+# Ensure directory exists for database
+db_parent = Path(DATABASE_PATH).parent
+db_parent.mkdir(parents=True, exist_ok=True)
+
+# Logging
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
