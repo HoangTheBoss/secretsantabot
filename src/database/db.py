@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS game_sessions (
     party_date TEXT,
     party_venue TEXT,
     signup_deadline TEXT,
+    last_reminded_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -47,6 +48,7 @@ CREATE TABLE IF NOT EXISTS pairings (
     gift_tag_code TEXT NOT NULL,
     assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     gift_status TEXT DEFAULT 'NOT_STARTED',
+    last_reminded_at TIMESTAMP,
     FOREIGN KEY (session_id) REFERENCES game_sessions(id) ON DELETE CASCADE,
     UNIQUE (session_id, santa_id),
     UNIQUE (session_id, baby_id)
@@ -79,13 +81,25 @@ CREATE INDEX IF NOT EXISTS idx_relay_session ON relay_messages(session_id);
 
 
 async def init_db(db_path: str = DATABASE_PATH) -> None:
-    """Initialize database tables and indexes."""
+    """Initialize database tables, columns, and indexes."""
     path = Path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     logger.info("Initializing database schema at %s", db_path)
 
     async with aiosqlite.connect(db_path) as db:
         await db.executescript(SCHEMA_SQL)
+
+        # Check and add columns if upgrading existing db
+        try:
+            await db.execute("ALTER TABLE game_sessions ADD COLUMN last_reminded_at TIMESTAMP;")
+        except Exception:
+            pass  # Already exists
+
+        try:
+            await db.execute("ALTER TABLE pairings ADD COLUMN last_reminded_at TIMESTAMP;")
+        except Exception:
+            pass  # Already exists
+
         await db.commit()
     logger.info("Database schema initialized successfully.")
 

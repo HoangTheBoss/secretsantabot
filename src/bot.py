@@ -10,7 +10,9 @@ from src.database.db import init_db
 from src.database.repo import SantaRepository
 from src.cogs.admin_cog import AdminCog
 from src.cogs.user_cog import UserCog
+from src.cogs.reminder_cog import ReminderCog
 from src.ui.views import RegistrationView
+
 
 logger = logging.getLogger("secretsanta.bot")
 
@@ -38,6 +40,8 @@ class SecretSantaBot(commands.Bot):
         # Register cogs
         await self.add_cog(AdminCog(self, self.repo))
         await self.add_cog(UserCog(self, self.repo))
+        await self.add_cog(ReminderCog(self, self.repo))
+
 
         # Re-attach persistent views for active session if one exists
         if GUILD_ID:

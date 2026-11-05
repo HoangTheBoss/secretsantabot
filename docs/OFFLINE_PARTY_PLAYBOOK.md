@@ -55,11 +55,16 @@ flowchart LR
    - Target's name, wishlist, and drink/party notes.
    - **Secret Gift Tag Code** (e.g. `🎁 CODE: POLAR-4`).
 
-### T-2 to T-1 Weeks: Anonymous Q&A & Progress
+### T-2 to T-1 Weeks: Anonymous Q&A, Reminders & Progress
 - If a Santa needs clarification (e.g., shoe size, book edition), they click **[Ask Baby Anonymously ✉️]** in DM.
 - As Santas shop and wrap gifts, they click **[Mark as Wrapped 🎁]**.
+- **Routine Updates & Reminders:**
+  - The bot automatically posts daily/periodic countdown updates in `#secret-santa`.
+  - The bot sends gentle private DM check-ins to Santas who have not yet wrapped their gifts.
+  - The host can also manually broadcast reminders anytime using `/remind channel` or `/remind dms`.
 - The main channel displays the spoiler-free progress bar:
   > **🎁 Preparation Progress:** `[████████░░]` **7 / 9 Santas are ready for the party!**
+
 
 ---
 

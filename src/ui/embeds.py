@@ -215,3 +215,105 @@ def build_admin_export_embed(pairings: list[dict[str, Any]]) -> discord.Embed:
     embed.add_field(name="Pairings List", value=text, inline=False)
     embed.set_footer(text="Keep this strictly private!")
     return embed
+
+
+def build_public_reminder_embed(
+    session: dict[str, Any],
+    participants: list[dict[str, Any]],
+    custom_note: Optional[str] = None,
+) -> discord.Embed:
+    """Public announcement embed for countdown and periodic reminders."""
+    status = session.get("status", "REGISTRATION")
+    total = len(participants)
+    party_date = session.get("party_date") or "Upcoming"
+    party_venue = session.get("party_venue") or "Party Venue"
+
+    if status == "REGISTRATION":
+        embed = discord.Embed(
+            title="⏰ Secret Santa Registration Reminder! 🎅",
+            description=(
+                "Don't miss out on our private Secret Santa game! "
+                "Signups are currently open—make sure to join and fill out your wishlist."
+            ),
+            color=discord.Color.gold(),
+        )
+        embed.add_field(
+            name="👥 Currently Registered",
+            value=f"**{total} Santas** have joined so far!",
+            inline=True,
+        )
+        if session.get("signup_deadline"):
+            embed.add_field(name="⏳ Sign-up Deadline", value=session["signup_deadline"], inline=True)
+        embed.add_field(name="📅 Planned Party Date", value=party_date, inline=True)
+        embed.set_footer(text="Click [Join Event 🎁] on the main registration message to participate!")
+    else:  # IN_PROGRESS
+        wrapped = sum(1 for p in participants if p.get("gift_status") in ("WRAPPED", "READY", "AT_PARTY"))
+        embed = discord.Embed(
+            title="⏰ Secret Santa Party Countdown & Prep Update! 🎅",
+            description=(
+                f"The countdown is on for our in-person holiday party!\n\n"
+                f"📅 **Party Date:** {party_date}\n"
+                f"📍 **Venue:** {party_venue}\n\n"
+                f"**Preparation Progress:**\n{create_progress_bar(wrapped, total)}"
+            ),
+            color=discord.Color.red(),
+        )
+        embed.add_field(
+            name="📦 Friendly Checklist for Santas",
+            value=(
+                "• Securely wrap your gift before the party.\n"
+                "• Label with `To: [Baby Name]` and `Code: [Your Secret Code]`.\n"
+                "• **Do not sign your real name!**\n"
+                "• Click `Mark as Wrapped` in your DM with the bot once ready!"
+            ),
+            inline=False,
+        )
+
+    if custom_note:
+        embed.add_field(name="📢 Message from the Host", value=custom_note, inline=False)
+
+    return embed
+
+
+def build_dm_reminder_embed(
+    baby_name: str,
+    gift_tag_code: str,
+    party_date: Optional[str] = None,
+    party_venue: Optional[str] = None,
+    custom_note: Optional[str] = None,
+) -> discord.Embed:
+    """Targeted private reminder DM embed sent to an unwrapped Santa."""
+    embed = discord.Embed(
+        title="🎅 Secret Santa Check-In: Don't Forget Your Gift! 🎁",
+        description=(
+            f"Friendly reminder that you are the Secret Santa for **{baby_name}**!\n"
+            "The in-person party is approaching, so make sure to get your gift ready and wrapped."
+        ),
+        color=discord.Color.gold(),
+    )
+
+    info_lines = [
+        f"• **Target Baby:** {baby_name}",
+        f"• **Secret Gift Code:** `{gift_tag_code}`",
+    ]
+    if party_date:
+        info_lines.append(f"• **Party Date:** {party_date}")
+    if party_venue:
+        info_lines.append(f"• **Venue:** {party_venue}")
+
+    embed.add_field(name="🏷️ Your Target Info", value="\n".join(info_lines), inline=False)
+    embed.add_field(
+        name="🏷️ Physical Wrapping Rule",
+        value=(
+            f"Write `To: {baby_name}` and `Code: {gift_tag_code}` on the wrapping paper "
+            "so it can be identified under the tree without spoiling your identity!"
+        ),
+        inline=False,
+    )
+
+    if custom_note:
+        embed.add_field(name="📢 Note from the Host", value=custom_note, inline=False)
+
+    embed.set_footer(text="Use the buttons below to update your status once bought or wrapped!")
+    return embed
+

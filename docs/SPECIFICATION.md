@@ -168,6 +168,20 @@ CREATE TABLE IF NOT EXISTS relay_messages (
   > `[████████░░]` **7 / 9 Santas have wrapped their gifts!**
 - No names are spoiled publicly.
 
-### 4.7 Host Emergency Backup
+### 4.7 Routine Updates & Reminders System
+- **Background Task (`discord.ext.tasks`):** Runs every 24 hours (configurable via `ROUTINE_REMINDER_HOURS`).
+- **Channel Broadcasts:**
+  - *Registration Phase:* Sign-up reminder, deadline countdown, and current participant count.
+  - *In-Progress Phase:* Party countdown, venue reminder, and preparation progress bar.
+- **Smart DM Nudges:**
+  - Automatically queries Santas whose gifts are still `NOT_STARTED` or `BOUGHT` (ignoring Santas who already wrapped).
+  - Delivers a private DM embed reminding them of their target's name, physical gift tag code, and interactive buttons to mark as wrapped or ask questions.
+- **On-Demand Admin Commands:**
+  - `/remind channel [custom_note]`: Immediately posts a public reminder to `#secret-santa`.
+  - `/remind dms [custom_note]`: Immediately sends reminder DMs to all unwrapped Santas.
+  - `/remind user member:<Member> [custom_note]`: Sends a reminder DM to a specific user.
+
+### 4.8 Host Emergency Backup
+
 - `/secretsanta admin export`: Ephemerally sends the organizer a private master cheat sheet (or CSV/text summary) of all pairings and gift codes in case someone forgets who they have on party day.
 - `/secretsanta admin resend @participant`: Privately re-sends a participant their target info DM.

@@ -315,3 +315,65 @@ class SantaRepository:
             )
             await db.commit()
             return cursor.lastrowid
+
+    async def get_all_active_sessions(self) -> list[dict[str, Any]]:
+        """Fetch all active game sessions across guilds."""
+        async with get_connection(self.db_path) as db:
+            async with db.execute(
+                """
+                SELECT * FROM game_sessions
+                WHERE status IN ('REGISTRATION', 'IN_PROGRESS')
+                ORDER BY id ASC
+                """
+            ) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(r) for r in rows]
+
+    async def get_unwrapped_pairings(self, session_id: int) -> list[dict[str, Any]]:
+        """Fetch pairings for Santas who haven't marked their gift as wrapped/ready."""
+        async with get_connection(self.db_path) as db:
+            async with db.execute(
+                """
+                SELECT p.*,
+                       s.display_name as santa_name,
+                       s.username as santa_username,
+                       b.display_name as baby_name,
+                       b.username as baby_username
+                FROM pairings p
+                JOIN participants s ON p.session_id = s.session_id AND p.santa_id = s.user_id
+                JOIN participants b ON p.session_id = b.session_id AND p.baby_id = b.user_id
+                WHERE p.session_id = ?
+                  AND p.gift_status NOT IN ('WRAPPED', 'READY', 'AT_PARTY')
+                ORDER BY p.id ASC
+                """,
+                (session_id,),
+            ) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(r) for r in rows]
+
+    async def update_pairing_reminded(self, session_id: int, santa_id: int) -> None:
+        """Record the timestamp when Santa was nudged via DM."""
+        async with get_connection(self.db_path) as db:
+            await db.execute(
+                """
+                UPDATE pairings
+                SET last_reminded_at = CURRENT_TIMESTAMP
+                WHERE session_id = ? AND santa_id = ?
+                """,
+                (session_id, santa_id),
+            )
+            await db.commit()
+
+    async def update_session_reminded(self, session_id: int) -> None:
+        """Record the timestamp when the public channel was nudged."""
+        async with get_connection(self.db_path) as db:
+            await db.execute(
+                """
+                UPDATE game_sessions
+                SET last_reminded_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (session_id,),
+            )
+            await db.commit()
+

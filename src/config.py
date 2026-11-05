@@ -38,5 +38,12 @@ DATABASE_PATH = os.getenv("DATABASE_PATH", str(BASE_DIR / "data" / "secretsanta.
 db_parent = Path(DATABASE_PATH).parent
 db_parent.mkdir(parents=True, exist_ok=True)
 
+# Routine Reminders
+ROUTINE_REMINDERS_ENABLED = os.getenv("ROUTINE_REMINDERS_ENABLED", "true").lower() in ("true", "1", "yes")
+try:
+    ROUTINE_REMINDER_HOURS = max(1, int(os.getenv("ROUTINE_REMINDER_HOURS", "24")))
+except ValueError:
+    ROUTINE_REMINDER_HOURS = 24
+
 # Logging
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
