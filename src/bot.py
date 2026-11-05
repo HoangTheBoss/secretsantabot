@@ -69,7 +69,11 @@ class SecretSantaBot(commands.Bot):
         # Re-attach persistent views for active session if one exists
         if GUILD_ID:
             active_session = await self.repo.get_active_session(GUILD_ID)
-            if active_session:
+            if (
+                active_session
+                and active_session.get("status") in ("REGISTRATION", "IN_PROGRESS")
+                and active_session.get("registration_message_id")
+            ):
                 logger.info("Re-attaching persistent view for active session %s", active_session["id"])
                 self.add_view(RegistrationView(self.repo, active_session["id"]))
 

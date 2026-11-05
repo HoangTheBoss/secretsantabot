@@ -69,6 +69,7 @@ class AdminCog(commands.Cog):
             session_id = await self.repo.create_session(
                 guild_id=guild_id,
                 channel_id=channel_id,
+                status="DRAFT",
             )
             existing = await self.repo.get_session_by_id(session_id)
 

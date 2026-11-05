@@ -56,10 +56,24 @@ class WishlistModal(discord.ui.Modal, title="Secret Santa: Wishlist & Notes"):
         self.add_item(self.offline_notes_input)
 
     async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+
         user = interaction.user
         wishlist = self.wishlist_input.value.strip()
         dislikes = self.dislikes_input.value.strip()
         offline_notes = self.offline_notes_input.value.strip()
+
+        dm_verified = True
+        try:
+            await user.send(
+                "🎄 **Hi there!** This confirms you are registered for Secret Santa! "
+                "We will deliver your secret target assignment here once the draw takes place."
+            )
+        except discord.Forbidden:
+            dm_verified = False
+        except Exception as e:
+            logger.warning("Could not send confirmation DM to %s: %s", user.id, e)
+            dm_verified = False
 
         await self.repo.add_or_update_participant(
             session_id=self.session_id,
@@ -69,14 +83,25 @@ class WishlistModal(discord.ui.Modal, title="Secret Santa: Wishlist & Notes"):
             wishlist=wishlist,
             dislikes=dislikes,
             offline_notes=offline_notes,
-            dm_verified=True,
+            dm_verified=dm_verified,
         )
 
-        await interaction.response.send_message(
-            "✅ **Your Secret Santa wishlist and preferences have been saved!**\n"
-            "You are officially registered for the event. You can edit this anytime using the `Update Wishlist` button.",
-            ephemeral=True,
-        )
+        if dm_verified:
+            resp_msg = (
+                "✅ **Your Secret Santa wishlist and preferences have been saved!**\n"
+                "You are officially registered for the event. A confirmation message was sent to your DMs."
+            )
+        else:
+            resp_msg = (
+                "⚠️ **Your preferences were saved, BUT your DMs are closed!**\n"
+                "The bot cannot deliver your secret target assignment because your Discord Privacy Settings block DMs from server members.\n\n"
+                "**How to fix:**\n"
+                "1. Right-click this server icon (or tap server name on mobile).\n"
+                "2. Go to **Privacy Settings**.\n"
+                "3. Enable **'Allow direct messages from server members'**."
+            )
+
+        await interaction.followup.send(resp_msg, ephemeral=True)
 
         # Trigger channel embed refresh if callback provided
         if self.on_refresh_callback:
@@ -275,6 +300,10 @@ class SetupModal(discord.ui.Modal, title="Secret Santa: Event Settings"):
         if not updated_existing:
             new_msg = await target_channel.send(embed=embed, view=view)
             await self.repo.update_registration_message_id(self.session_id, new_msg.id)
+            await self.repo.update_session_status(self.session_id, "REGISTRATION")
+            await self.repo.update_session_reminded(self.session_id)
+        else:
+            await self.repo.update_session_status(self.session_id, "REGISTRATION")
 
         conf_msg = "✅ **Secret Santa event settings updated!** Channel card refreshed in-place." if updated_existing else "✅ **Secret Santa event initialized!** Registration card posted."
         if deadline_epoch:

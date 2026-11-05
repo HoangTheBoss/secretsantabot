@@ -92,7 +92,7 @@ async def test_pairings_and_relay(temp_repo):
 
 
 async def test_auto_draw_deadline_repo(temp_repo):
-    # Create session with past deadline (epoch 1000)
+    # Create session with past deadline (epoch 1000) but no registration card yet
     session_id = await temp_repo.create_session(
         guild_id=777,
         channel_id=888,
@@ -100,6 +100,13 @@ async def test_auto_draw_deadline_repo(temp_repo):
         signup_deadline_epoch=1000,
         auto_draw=True,
     )
+
+    # Before registration_message_id is set, it must not be picked up
+    due_uninitialized = await temp_repo.get_due_auto_draw_sessions(current_epoch=2000)
+    assert len(due_uninitialized) == 0
+
+    # Initialize registration message ID
+    await temp_repo.update_registration_message_id(session_id, 987654321)
 
     # Current epoch is 2000 (after deadline)
     due = await temp_repo.get_due_auto_draw_sessions(current_epoch=2000)
@@ -115,8 +122,7 @@ async def test_auto_draw_deadline_repo(temp_repo):
     due_disabled = await temp_repo.get_due_auto_draw_sessions(current_epoch=2000)
     assert len(due_disabled) == 0
 
-    # Test registration message id and session cancellation
-    await temp_repo.update_registration_message_id(session_id, 987654321)
+    # Check updated session info
     updated = await temp_repo.get_session_by_id(session_id)
     assert updated["registration_message_id"] == 987654321
 

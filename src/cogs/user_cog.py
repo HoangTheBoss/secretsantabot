@@ -18,7 +18,7 @@ class UserCog(commands.Cog):
     @app_commands.command(name="my_status", description="Check your Secret Santa registration and gift preparation status.")
     async def my_status(self, interaction: discord.Interaction):
         session = await self.repo.get_active_session(interaction.guild_id)
-        if not session:
+        if not session or not session.get("registration_message_id") or session.get("status") not in ("REGISTRATION", "IN_PROGRESS"):
             await interaction.response.send_message("❌ No active Secret Santa session found.", ephemeral=True)
             return
 
@@ -57,7 +57,7 @@ class UserCog(commands.Cog):
     @app_commands.command(name="update_wishlist", description="Open modal to update your Secret Santa wishlist and party notes.")
     async def update_wishlist(self, interaction: discord.Interaction):
         session = await self.repo.get_active_session(interaction.guild_id)
-        if not session:
+        if not session or not session.get("registration_message_id") or session.get("status") not in ("REGISTRATION", "IN_PROGRESS"):
             await interaction.response.send_message("❌ No active Secret Santa session found.", ephemeral=True)
             return
 

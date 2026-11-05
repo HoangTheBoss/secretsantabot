@@ -42,6 +42,7 @@ class SantaRepository:
         self,
         guild_id: int,
         channel_id: int,
+        status: str = "REGISTRATION",
         budget: Optional[str] = None,
         party_date: Optional[str] = None,
         party_venue: Optional[str] = None,
@@ -49,7 +50,7 @@ class SantaRepository:
         signup_deadline_epoch: Optional[int] = None,
         auto_draw: bool = True,
     ) -> int:
-        """Create a new game session in REGISTRATION state."""
+        """Create a new game session."""
         async with get_connection(self.db_path) as db:
             cursor = await db.execute(
                 """
@@ -57,11 +58,12 @@ class SantaRepository:
                     guild_id, channel_id, status, budget, party_date,
                     party_venue, signup_deadline, signup_deadline_epoch, auto_draw
                 )
-                VALUES (?, ?, 'REGISTRATION', ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     guild_id,
                     channel_id,
+                    status,
                     budget,
                     party_date,
                     party_venue,
@@ -369,12 +371,13 @@ class SantaRepository:
             return cursor.lastrowid
 
     async def get_all_active_sessions(self) -> list[dict[str, Any]]:
-        """Fetch all active game sessions across guilds."""
+        """Fetch all active game sessions across guilds that have been initialized with a channel card."""
         async with get_connection(self.db_path) as db:
             async with db.execute(
                 """
                 SELECT * FROM game_sessions
                 WHERE status IN ('REGISTRATION', 'IN_PROGRESS')
+                  AND registration_message_id IS NOT NULL
                 ORDER BY id ASC
                 """
             ) as cursor:
@@ -438,6 +441,7 @@ class SantaRepository:
                 WHERE status = 'REGISTRATION'
                   AND auto_draw = 1
                   AND signup_deadline_epoch IS NOT NULL
+                  AND registration_message_id IS NOT NULL
                   AND signup_deadline_epoch <= ?
                 ORDER BY id ASC
                 """,

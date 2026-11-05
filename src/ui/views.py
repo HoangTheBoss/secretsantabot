@@ -32,28 +32,6 @@ class RegistrationView(discord.ui.View):
             )
             return
 
-        # Pre-check: Verify the user can receive DMs from the bot
-        try:
-            # Send a silent/ephemeral test DM handshake
-            await interaction.user.send(
-                "🎄 **Hi there!** This is a verification message to confirm the bot can send you "
-                "your Secret Santa target assignment. Please complete your registration in the server!"
-            )
-        except discord.Forbidden:
-            await interaction.response.send_message(
-                "❌ **Cannot receive Direct Messages!**\n"
-                "The bot cannot send you your secret target because your Discord Privacy Settings block DMs from server members.\n\n"
-                "**How to fix:**\n"
-                "1. Right-click this server icon (or tap server name on mobile).\n"
-                "2. Go to **Privacy Settings**.\n"
-                "3. Enable **'Allow direct messages from server members'**.\n"
-                "4. Click **[Join Event 🎁]** again!",
-                ephemeral=True,
-            )
-            return
-        except Exception as e:
-            logger.warning("Error verifying DM for user %s: %s", interaction.user.id, e)
-
         # Fetch existing participant data if any
         existing = await self.repo.get_participant(self.session_id, interaction.user.id)
         existing_wishlist = existing["wishlist"] if existing else ""

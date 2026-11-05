@@ -4,7 +4,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 import logging
-from typing import Optional
+from typing import Optional, Any
 from datetime import datetime, timezone
 
 from src.database.repo import SantaRepository
@@ -17,13 +17,28 @@ from src.ui.embeds import (
 from src.ui.views import SantaDmView
 from src.services.draw_service import execute_draw
 from src.config import (
-
     ROUTINE_REMINDERS_ENABLED,
     ROUTINE_REMINDER_HOURS,
     SANTA_ADMIN_ROLE_ID,
 )
 
 logger = logging.getLogger("secretsanta.reminder_cog")
+
+
+def parse_sqlite_timestamp(ts: Optional[Any]) -> Optional[datetime]:
+    """Parse SQLite timestamp string or datetime object into UTC datetime."""
+    if not ts:
+        return None
+    if isinstance(ts, datetime):
+        if ts.tzinfo is None:
+            return ts.replace(tzinfo=timezone.utc)
+        return ts
+    try:
+        ts_clean = str(ts).replace("T", " ").strip()
+        dt = datetime.strptime(ts_clean[:19], "%Y-%m-%d %H:%M:%S")
+        return dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
 
 
 DEADLINE_MILESTONES = [
@@ -65,8 +80,10 @@ class ReminderCog(commands.Cog):
         self.repo = repo
 
         if ROUTINE_REMINDERS_ENABLED:
-            logger.info("Starting routine reminder loop (every %s hours)...", ROUTINE_REMINDER_HOURS)
-            self.routine_reminder_loop.change_interval(hours=ROUTINE_REMINDER_HOURS)
+            logger.info(
+                "Starting routine reminder loop (checking every 15 minutes, interval %sh)...",
+                ROUTINE_REMINDER_HOURS,
+            )
             self.routine_reminder_loop.start()
 
         # Start auto-draw deadline checker
@@ -109,7 +126,7 @@ class ReminderCog(commands.Cog):
         # 2. Check for escalating countdown reminders before deadline
         active_sessions = await self.repo.get_all_active_sessions()
         for session in active_sessions:
-            if session.get("status") != "REGISTRATION":
+            if session.get("status") != "REGISTRATION" or not session.get("registration_message_id"):
                 continue
 
             deadline_epoch = session.get("signup_deadline_epoch")
@@ -144,11 +161,11 @@ class ReminderCog(commands.Cog):
 
 
 
-    @tasks.loop(hours=24)
+    @tasks.loop(minutes=15)
     async def routine_reminder_loop(self):
         """Periodic background task that posts routine channel updates and nudges unwrapped Santas."""
         await self.bot.wait_until_ready()
-        logger.info("Executing routine reminder background task...")
+        logger.debug("Executing routine reminder background check...")
 
         sessions = await self.repo.get_all_active_sessions()
         for session in sessions:
@@ -162,26 +179,55 @@ class ReminderCog(commands.Cog):
         channel_id = session["channel_id"]
         status = session.get("status")
 
-        # 1. Public Channel Update
-        channel = self.bot.get_channel(channel_id)
-        if not channel:
-            try:
-                channel = await self.bot.fetch_channel(channel_id)
-            except Exception:
-                channel = None
+        # Skip sessions that are not fully set up or not active
+        if not session.get("registration_message_id") or status not in ("REGISTRATION", "IN_PROGRESS"):
+            logger.debug("Skipping session %s as it is not fully set up or active", session_id)
+            return
 
-        participants = await self.repo.get_all_participants(session_id)
-        if channel and isinstance(channel, discord.TextChannel):
-            embed = build_public_reminder_embed(session, participants)
-            await channel.send(embed=embed)
-            await self.repo.update_session_reminded(session_id)
-            logger.info("Sent routine public channel reminder to #%s", channel.name)
+        now_utc = datetime.now(timezone.utc)
+
+        # 1. Public Channel Update
+        last_reminded = parse_sqlite_timestamp(session.get("last_reminded_at"))
+        created_at = parse_sqlite_timestamp(session.get("created_at"))
+        reference_time = last_reminded or created_at
+
+        should_send_channel_reminder = True
+        if reference_time:
+            elapsed_hours = (now_utc - reference_time).total_seconds() / 3600.0
+            if elapsed_hours < ROUTINE_REMINDER_HOURS:
+                logger.debug(
+                    "Skipping routine public reminder for session %s (elapsed %.2fh < %sh)",
+                    session_id,
+                    elapsed_hours,
+                    ROUTINE_REMINDER_HOURS,
+                )
+                should_send_channel_reminder = False
+
+        if should_send_channel_reminder:
+            channel = self.bot.get_channel(channel_id)
+            if not channel:
+                try:
+                    channel = await self.bot.fetch_channel(channel_id)
+                except Exception:
+                    channel = None
+
+            participants = await self.repo.get_all_participants(session_id)
+            if channel and isinstance(channel, discord.TextChannel):
+                embed = build_public_reminder_embed(session, participants)
+                await channel.send(embed=embed)
+                await self.repo.update_session_reminded(session_id)
+                logger.info("Sent routine public channel reminder to #%s", channel.name)
 
         # 2. Private DM Nudges (only when IN_PROGRESS)
         if status == "IN_PROGRESS":
             unwrapped = await self.repo.get_unwrapped_pairings(session_id)
             for p in unwrapped:
                 santa_id = p["santa_id"]
+                last_dm_time = parse_sqlite_timestamp(p.get("last_reminded_at")) or parse_sqlite_timestamp(p.get("assigned_at"))
+                if last_dm_time:
+                    elapsed_dm = (now_utc - last_dm_time).total_seconds() / 3600.0
+                    if elapsed_dm < ROUTINE_REMINDER_HOURS:
+                        continue
                 try:
                     santa_user = await self.bot.fetch_user(santa_id)
                     dm_embed = build_dm_reminder_embed(
@@ -214,8 +260,11 @@ class ReminderCog(commands.Cog):
         custom_note: Optional[str] = None,
     ):
         session = await self.repo.get_active_session(interaction.guild_id)
-        if not session:
-            await interaction.response.send_message("❌ No active Secret Santa session found.", ephemeral=True)
+        if not session or not session.get("registration_message_id") or session.get("status") not in ("REGISTRATION", "IN_PROGRESS"):
+            await interaction.response.send_message(
+                "❌ No active Secret Santa session found. Please run `/secretsanta setup` first.",
+                ephemeral=True,
+            )
             return
 
         participants = await self.repo.get_all_participants(session["id"])
@@ -241,13 +290,9 @@ class ReminderCog(commands.Cog):
         custom_note: Optional[str] = None,
     ):
         session = await self.repo.get_active_session(interaction.guild_id)
-        if not session:
-            await interaction.response.send_message("❌ No active Secret Santa session found.", ephemeral=True)
-            return
-
-        if session.get("status") != "IN_PROGRESS":
+        if not session or not session.get("registration_message_id") or session.get("status") != "IN_PROGRESS":
             await interaction.response.send_message(
-                "⚠️ Pairings have not been drawn yet! Use `/remind channel` to remind people to register.",
+                "⚠️ Pairings have not been drawn yet or event is not active! Use `/remind channel` to remind people to register.",
                 ephemeral=True,
             )
             return
@@ -304,8 +349,10 @@ class ReminderCog(commands.Cog):
         custom_note: Optional[str] = None,
     ):
         session = await self.repo.get_active_session(interaction.guild_id)
-        if not session:
-            await interaction.response.send_message("❌ No active Secret Santa session found.", ephemeral=True)
+        if not session or not session.get("registration_message_id") or session.get("status") != "IN_PROGRESS":
+            await interaction.response.send_message(
+                "❌ No active Secret Santa session in progress found.", ephemeral=True
+            )
             return
 
         pairing = await self.repo.get_pairing_for_santa(session["id"], member.id)

@@ -116,3 +116,115 @@ async def test_milestone_tracking_and_embed(temp_repo):
     assert "Urgent: 2 Hours Left!" in embed.title
     assert "1765371600" in embed.description
 
+
+async def test_unsetup_sessions_omitted_from_active_sessions(temp_repo):
+    # Session 1: DRAFT without card
+    s1 = await temp_repo.create_session(guild_id=1, channel_id=10, status="DRAFT")
+
+    # Session 2: REGISTRATION but registration_message_id is NULL (not finished setup)
+    s2 = await temp_repo.create_session(guild_id=2, channel_id=20, status="REGISTRATION")
+
+    # Session 3: REGISTRATION and fully set up with card
+    s3 = await temp_repo.create_session(guild_id=3, channel_id=30, status="REGISTRATION")
+    await temp_repo.update_registration_message_id(s3, 999001)
+
+    # Session 4: COMPLETED
+    s4 = await temp_repo.create_session(guild_id=4, channel_id=40, status="COMPLETED")
+    await temp_repo.update_registration_message_id(s4, 999002)
+
+    active = await temp_repo.get_all_active_sessions()
+    active_ids = [s["id"] for s in active]
+    assert s1 not in active_ids
+    assert s2 not in active_ids
+    assert s4 not in active_ids
+    assert s3 in active_ids
+    assert len(active) == 1
+
+
+def test_parse_sqlite_timestamp():
+    from src.cogs.reminder_cog import parse_sqlite_timestamp
+    from datetime import datetime, timezone
+
+    assert parse_sqlite_timestamp(None) is None
+    assert parse_sqlite_timestamp("") is None
+
+    # SQLite standard CURRENT_TIMESTAMP string format
+    ts_str = "2026-11-05 15:30:45"
+    dt = parse_sqlite_timestamp(ts_str)
+    assert dt is not None
+    assert dt.year == 2026
+    assert dt.month == 11
+    assert dt.day == 5
+    assert dt.hour == 15
+    assert dt.minute == 30
+    assert dt.second == 45
+    assert dt.tzinfo == timezone.utc
+
+    # ISO string format
+    iso_str = "2026-12-25T10:00:00.123456"
+    dt_iso = parse_sqlite_timestamp(iso_str)
+    assert dt_iso is not None
+    assert dt_iso.year == 2026
+    assert dt_iso.month == 12
+    assert dt_iso.day == 25
+    assert dt_iso.hour == 10
+
+    # datetime object
+    dt_obj = datetime(2026, 1, 1, 12, 0, 0)
+    assert parse_sqlite_timestamp(dt_obj).tzinfo == timezone.utc
+
+
+async def test_process_session_routine_update_timing(temp_repo):
+    from unittest.mock import AsyncMock, MagicMock
+    from datetime import datetime, timezone, timedelta
+    from src.cogs.reminder_cog import ReminderCog
+
+    import discord
+
+    mock_bot = MagicMock()
+    mock_bot.wait_until_ready = AsyncMock()
+    mock_channel = MagicMock(spec=discord.TextChannel)
+    mock_channel.send = AsyncMock()
+    mock_channel.name = "santa-channel"
+    mock_bot.get_channel.return_value = mock_channel
+
+    cog = ReminderCog(bot=mock_bot, repo=temp_repo)
+
+    # 1. Session with registration_message_id is None -> MUST be skipped
+    unsetup_session = {
+        "id": 100,
+        "channel_id": 999,
+        "status": "REGISTRATION",
+        "registration_message_id": None,
+    }
+    await cog._process_session_routine_update(unsetup_session)
+    mock_channel.send.assert_not_called()
+
+    # 2. Session reminded 1 hour ago (within 24h interval) -> MUST be skipped
+    recent_ts = (datetime.now(timezone.utc) - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+    recent_session = {
+        "id": 101,
+        "channel_id": 999,
+        "status": "REGISTRATION",
+        "registration_message_id": 12345,
+        "last_reminded_at": recent_ts,
+        "created_at": recent_ts,
+    }
+    await cog._process_session_routine_update(recent_session)
+    mock_channel.send.assert_not_called()
+
+    # 3. Session created/reminded 25 hours ago -> SHOULD send reminder!
+    old_ts = (datetime.now(timezone.utc) - timedelta(hours=25)).strftime("%Y-%m-%d %H:%M:%S")
+    old_session = {
+        "id": 102,
+        "channel_id": 999,
+        "status": "REGISTRATION",
+        "registration_message_id": 12345,
+        "last_reminded_at": old_ts,
+        "created_at": old_ts,
+    }
+    await cog._process_session_routine_update(old_session)
+    assert mock_channel.send.called
+    cog.cog_unload()
+
+
