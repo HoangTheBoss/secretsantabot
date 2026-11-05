@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """Entry point for running the Buda Secret Santa Discord Bot."""
 
+import os
+try:
+    import certifi
+    os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+except ImportError:
+    pass
+
 import sys
 import logging
 from src.config import DISCORD_TOKEN

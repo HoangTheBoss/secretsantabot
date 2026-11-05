@@ -27,10 +27,17 @@ def parse_deadline(input_str: str) -> tuple[datetime, int, str]:
 
     now = datetime.now(DEFAULT_TIMEZONE)
 
+    # Clean commas and extra spaces
+    raw_clean = re.sub(r",\s*", " ", raw)
+    # Normalize 1:30pm -> 1:30 PM, 1pm -> 1:00 PM
+    raw_clean = re.sub(r"(\d{1,2}:\d{2})\s*(am|pm)\b", r"\1 \2", raw_clean, flags=re.I)
+    raw_clean = re.sub(r"(?<!:)\b(\d{1,2})\s*(am|pm)\b", r"\1:00 \2", raw_clean, flags=re.I)
+    raw_clean = re.sub(r"\s+", " ", raw_clean).strip()
+
     # 1. Check relative format: e.g. "3d", "5 days", "12h", "30m"
     rel_match = re.fullmatch(
         r"^(?:in\s+)?(\d+)\s*(d|day|days|h|hr|hrs|hour|hours|m|min|mins|minute|minutes)$",
-        raw,
+        raw_clean,
         re.IGNORECASE,
     )
     if rel_match:
@@ -48,20 +55,50 @@ def parse_deadline(input_str: str) -> tuple[datetime, int, str]:
         formatted = target_dt.strftime("%Y-%m-%d %H:%M ICT")
         return target_dt, epoch, formatted
 
-    # 2. Check standard absolute formats
+    # 2. Check standard absolute formats with year
     formats_with_year = [
+        # ISO / hyphen / slash
         ("%Y-%m-%d %H:%M", False),
         ("%Y-%m-%d %H:%M:%S", False),
+        ("%Y/%m/%d %H:%M", False),
+        ("%d/%m/%Y %H:%M", False),
+        ("%d-%m-%Y %H:%M", False),
+        ("%Y-%m-%d %I:%M %p", False),
+        ("%Y/%m/%d %I:%M %p", False),
+        ("%d/%m/%Y %I:%M %p", False),
+        ("%d-%m-%Y %I:%M %p", False),
         ("%Y-%m-%d", True),
+        ("%Y/%m/%d", True),
+        ("%d/%m/%Y", True),
+        ("%d-%m-%Y", True),
+        # Month name + Day + Year + Time
         ("%b %d %Y %H:%M", False),
         ("%B %d %Y %H:%M", False),
+        ("%b %d %Y %I:%M %p", False),
+        ("%B %d %Y %I:%M %p", False),
+        ("%d %b %Y %H:%M", False),
+        ("%d %B %Y %H:%M", False),
+        ("%d %b %Y %I:%M %p", False),
+        ("%d %B %Y %I:%M %p", False),
+        # Month name + Day + Time + Year
+        ("%b %d %H:%M %Y", False),
+        ("%B %d %H:%M %Y", False),
+        ("%b %d %I:%M %p %Y", False),
+        ("%B %d %I:%M %p %Y", False),
+        ("%d %b %H:%M %Y", False),
+        ("%d %B %H:%M %Y", False),
+        ("%d %b %I:%M %p %Y", False),
+        ("%d %B %I:%M %p %Y", False),
+        # Date only
         ("%b %d %Y", True),
         ("%B %d %Y", True),
+        ("%d %b %Y", True),
+        ("%d %B %Y", True),
     ]
 
     for fmt, is_date_only in formats_with_year:
         try:
-            parsed = datetime.strptime(raw, fmt)
+            parsed = datetime.strptime(raw_clean, fmt)
             if is_date_only:
                 parsed = parsed.replace(hour=23, minute=59, second=59)
             target_dt = parsed.replace(tzinfo=DEFAULT_TIMEZONE)
@@ -71,18 +108,38 @@ def parse_deadline(input_str: str) -> tuple[datetime, int, str]:
         except ValueError:
             continue
 
-    # 3. Formats where year is omitted (append current year to avoid ambiguous year warning)
+    # 3. Formats where year is omitted (append current year at end)
     formats_without_year = [
-        ("%b %d %H:%M", "%b %d %Y %H:%M", False),
-        ("%B %d %H:%M", "%B %d %Y %H:%M", False),
-        ("%b %d", "%b %d %Y", True),
-        ("%B %d", "%B %d %Y", True),
+        # Date + Time
+        ("%b %d %H:%M %Y", False),
+        ("%B %d %H:%M %Y", False),
+        ("%b %d %I:%M %p %Y", False),
+        ("%B %d %I:%M %p %Y", False),
+        ("%d %b %H:%M %Y", False),
+        ("%d %B %H:%M %Y", False),
+        ("%d %b %I:%M %p %Y", False),
+        ("%d %B %I:%M %p %Y", False),
+        ("%m-%d %H:%M %Y", False),
+        ("%m/%d %H:%M %Y", False),
+        ("%d/%m %H:%M %Y", False),
+        ("%d-%m %H:%M %Y", False),
+        ("%m-%d %I:%M %p %Y", False),
+        ("%m/%d %I:%M %p %Y", False),
+        ("%d/%m %I:%M %p %Y", False),
+        ("%d-%m %I:%M %p %Y", False),
+        # Date only
+        ("%b %d %Y", True),
+        ("%B %d %Y", True),
+        ("%d %b %Y", True),
+        ("%d %B %Y", True),
+        ("%m-%d %Y", True),
+        ("%m/%d %Y", True),
     ]
 
-    for _, full_fmt, is_date_only in formats_without_year:
+    raw_with_year = f"{raw_clean} {now.year}"
+    for fmt, is_date_only in formats_without_year:
         try:
-            raw_with_year = f"{raw} {now.year}"
-            parsed = datetime.strptime(raw_with_year, full_fmt)
+            parsed = datetime.strptime(raw_with_year, fmt)
             # If already passed in current year, advance to next year
             target_dt_temp = parsed.replace(tzinfo=DEFAULT_TIMEZONE)
             if target_dt_temp < now:
@@ -100,7 +157,8 @@ def parse_deadline(input_str: str) -> tuple[datetime, int, str]:
         f"Could not parse deadline '{input_str}'.\n"
         "Supported formats (interpreted in Vietnam Time / ICT):\n"
         "• Relative: '3d', '7 days', '24h', '30m'\n"
-        "• Absolute: '2026-12-10 20:00', '2026-12-10', 'Dec 15 20:00', 'Dec 15'"
+        "• Date & Time: 'Dec 01 01:00', 'Dec 1 1:00 PM', '2026-12-10 20:00'\n"
+        "• Date only: 'Dec 15', '2026-12-10' (defaults to end of day 23:59)"
     )
 
 

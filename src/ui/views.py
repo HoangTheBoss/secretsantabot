@@ -3,6 +3,7 @@
 import discord
 import logging
 from typing import TYPE_CHECKING, Optional, Callable
+from src.config import SANTA_CHANNEL_ID
 
 if TYPE_CHECKING:
     from src.database.repo import SantaRepository
@@ -447,7 +448,7 @@ class HostControlPanel(discord.ui.View):
         modal = SetupModal(
             repo=self.repo,
             session_id=self.session_id,
-            channel_id=session.get("channel_id") or interaction.channel_id,
+            channel_id=session.get("channel_id") or SANTA_CHANNEL_ID or interaction.channel_id,
             existing_budget=session.get("budget") or "",
             existing_party_date=session.get("party_date") or "",
             existing_party_venue=session.get("party_venue") or "",
@@ -460,7 +461,7 @@ class HostControlPanel(discord.ui.View):
         from src.ui.modals import CreatePollModal
 
         session = await self.repo.get_session_by_id(self.session_id)
-        ch_id = session.get("channel_id") if session else interaction.channel_id
+        ch_id = (session.get("channel_id") if session else None) or SANTA_CHANNEL_ID or interaction.channel_id
         modal = CreatePollModal(target_channel_id=ch_id)
         await interaction.response.send_modal(modal)
 

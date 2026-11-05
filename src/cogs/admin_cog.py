@@ -57,7 +57,7 @@ class AdminCog(commands.Cog):
     @is_admin()
     async def setup_event(self, interaction: discord.Interaction):
         guild_id = interaction.guild_id
-        channel_id = interaction.channel_id
+        channel_id = SANTA_CHANNEL_ID or interaction.channel_id
         if not guild_id or not channel_id:
             return
 
@@ -133,7 +133,7 @@ class AdminCog(commands.Cog):
         options: Optional[str] = None,
     ):
         session = await self.repo.get_active_session(interaction.guild_id)
-        ch_id = session.get("channel_id") if session else interaction.channel_id
+        ch_id = (session.get("channel_id") if session else None) or SANTA_CHANNEL_ID or interaction.channel_id
 
         if not question or not options:
             from src.ui.modals import CreatePollModal

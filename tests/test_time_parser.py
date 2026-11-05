@@ -57,6 +57,36 @@ def test_absolute_date_only_defaults_to_end_of_day():
     assert dt.minute == 59
 
 
+def test_month_day_time_formats():
+    # User's exact case: Dec 01 01:00
+    dt, epoch, formatted = parse_deadline("Dec 01 01:00")
+    assert dt.month == 12
+    assert dt.day == 1
+    assert dt.hour == 1
+    assert dt.minute == 0
+
+    # With commas: Dec 1, 01:00
+    dt2, _, _ = parse_deadline("Dec 1, 01:00")
+    assert dt2.month == 12
+    assert dt2.day == 1
+    assert dt2.hour == 1
+
+    # Day month time: 15 Dec 14:30
+    dt3, _, _ = parse_deadline("15 Dec 14:30")
+    assert dt3.month == 12
+    assert dt3.day == 15
+    assert dt3.hour == 14
+    assert dt3.minute == 30
+
+    # AM/PM format: Dec 1 1:00 PM
+    dt4, _, _ = parse_deadline("Dec 1 1:00 PM")
+    assert dt4.hour == 13
+
+    # Shorthand AM/PM: Dec 1 1pm
+    dt5, _, _ = parse_deadline("Dec 1 1pm")
+    assert dt5.hour == 13
+
+
 def test_invalid_deadline_raises_value_error():
     with pytest.raises(ValueError, match="Could not parse deadline"):
         parse_deadline("invalid-gibberish-string")
