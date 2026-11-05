@@ -496,5 +496,59 @@ class RemindNoteModal(discord.ui.Modal):
         await self.on_submit_callback(interaction, note)
 
 
+class BulkExclusionModal(discord.ui.Modal, title="Bulk Add Exclusion Rules"):
+    """Modal allowing hosts to enter multiple pair or group exclusions at once."""
+
+    def __init__(self, repo: "SantaRepository", session_id: int):
+        super().__init__()
+        self.repo = repo
+        self.session_id = session_id
+
+        self.input_text = discord.ui.TextInput(
+            label="Pairs or Groups (One per line)",
+            style=discord.TextStyle.paragraph,
+            placeholder=(
+                "@Alice, @Bob\n"
+                "@Charlie, @Dave\n"
+                "@Eve, @Frank, @Grace (group: none can pair)"
+            ),
+            required=True,
+            max_length=2000,
+        )
+        self.add_item(self.input_text)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+
+        from src.utils.exclusion_parser import parse_bulk_exclusions
+
+        participants = await self.repo.get_all_participants(self.session_id)
+        raw_text = self.input_text.value.strip()
+
+        valid_pairs, unresolved = parse_bulk_exclusions(
+            raw_text=raw_text,
+            guild=interaction.guild,
+            participants=participants,
+        )
+
+        added_count = 0
+        if valid_pairs:
+            added_count = await self.repo.add_exclusions_bulk(self.session_id, valid_pairs)
+
+        from src.ui.views import ExclusionManageView
+
+        view = ExclusionManageView(self.repo, self.session_id)
+        await view.setup_components(interaction.guild)
+        embed = await view.build_exclusions_embed(interaction.guild)
+
+        msg = f"✅ **Processed exclusion rules:** Added {added_count} mutual exclusion pair(s)."
+        if unresolved:
+            msg += f"\n⚠️ **Could not resolve {len(unresolved)} line(s):**\n" + "\n".join(
+                f"• `{line}`" for line in unresolved[:5]
+            )
+
+        await interaction.followup.send(msg, embed=embed, view=view, ephemeral=True)
+
+
 
 

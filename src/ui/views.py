@@ -255,64 +255,216 @@ class PollView(discord.ui.View):
 
 
 class ExclusionManageView(discord.ui.View):
-    """Interactive view for managing pair exclusions using Discord's native UserSelect component."""
+    """Interactive view for managing pair and group exclusions using UserSelect, Remove dropdown, and Bulk Modal."""
 
     def __init__(self, repo: "SantaRepository", session_id: int):
         super().__init__(timeout=300)
         self.repo = repo
         self.session_id = session_id
+        self._add_static_items()
 
+    def _add_static_items(self):
+        # 1. UserSelect for pair/group exclusion (min=2, max=25)
         self.user_select = discord.ui.UserSelect(
-            placeholder="Select 2 members who cannot draw each other...",
+            placeholder="Select 2 or more members to mutually exclude...",
             min_values=2,
-            max_values=2,
+            max_values=25,
+            row=0,
         )
         self.user_select.callback = self._on_users_selected
         self.add_item(self.user_select)
 
+        # Static buttons (Row 2)
+        bulk_btn = discord.ui.Button(
+            label="Bulk Add / Paste 📝",
+            style=discord.ButtonStyle.primary,
+            row=2,
+        )
+        bulk_btn.callback = self._on_bulk_button
+        self.add_item(bulk_btn)
+
+        clear_btn = discord.ui.Button(
+            label="Clear All 🗑️",
+            style=discord.ButtonStyle.danger,
+            row=2,
+        )
+        clear_btn.callback = self._on_clear_button
+        self.add_item(clear_btn)
+
+        refresh_btn = discord.ui.Button(
+            label="Refresh 🔄",
+            style=discord.ButtonStyle.secondary,
+            row=2,
+        )
+        refresh_btn.callback = self._on_refresh_button
+        self.add_item(refresh_btn)
+
+    async def setup_components(self, guild: Optional[discord.Guild] = None):
+        """Re-render components dynamically based on current exclusions count."""
+        self.clear_items()
+
+        # 1. UserSelect (Row 0)
+        self.user_select = discord.ui.UserSelect(
+            placeholder="Select 2 or more members to mutually exclude...",
+            min_values=2,
+            max_values=25,
+            row=0,
+        )
+        self.user_select.callback = self._on_users_selected
+        self.add_item(self.user_select)
+
+        # 2. Dropdown to remove specific exclusion if any exist (Row 1)
+        exclusions = await self.repo.get_exclusions(self.session_id)
+        if exclusions:
+            participants = await self.repo.get_all_participants(self.session_id)
+            p_map = {p["user_id"]: p.get("display_name") or p.get("username") for p in participants}
+
+            remove_options: list[discord.SelectOption] = []
+            for a_id, b_id in exclusions[:25]:
+                m_a = guild.get_member(a_id) if guild else None
+                m_b = guild.get_member(b_id) if guild else None
+                name_a = (m_a.display_name if m_a else None) or p_map.get(a_id) or f"User {a_id}"
+                name_b = (m_b.display_name if m_b else None) or p_map.get(b_id) or f"User {b_id}"
+                label = f"{name_a} ⛔ {name_b}"[:100]
+                remove_options.append(
+                    discord.SelectOption(
+                        label=label,
+                        value=f"{a_id}_{b_id}",
+                        description="Remove this exclusion rule",
+                    )
+                )
+
+            self.remove_select = discord.ui.Select(
+                placeholder="Select an exclusion rule to remove...",
+                options=remove_options,
+                row=1,
+            )
+            self.remove_select.callback = self._on_remove_selected
+            self.add_item(self.remove_select)
+
+        # 3. Action Buttons row (Row 2)
+        bulk_btn = discord.ui.Button(
+            label="Bulk Add / Paste 📝",
+            style=discord.ButtonStyle.primary,
+            row=2,
+        )
+        bulk_btn.callback = self._on_bulk_button
+        self.add_item(bulk_btn)
+
+        clear_btn = discord.ui.Button(
+            label="Clear All 🗑️",
+            style=discord.ButtonStyle.danger,
+            row=2,
+            disabled=(len(exclusions) == 0),
+        )
+        clear_btn.callback = self._on_clear_button
+        self.add_item(clear_btn)
+
+        refresh_btn = discord.ui.Button(
+            label="Refresh 🔄",
+            style=discord.ButtonStyle.secondary,
+            row=2,
+        )
+        refresh_btn.callback = self._on_refresh_button
+        self.add_item(refresh_btn)
+
     async def _on_users_selected(self, interaction: discord.Interaction):
         selected_users = self.user_select.values
-        if len(selected_users) != 2:
-            await interaction.response.send_message("⚠️ Please select exactly 2 members.", ephemeral=True)
+        if len(selected_users) < 2:
+            await interaction.response.send_message("⚠️ Please select at least 2 members.", ephemeral=True)
             return
 
-        u1, u2 = selected_users[0], selected_users[1]
-        if u1.id == u2.id:
-            await interaction.response.send_message("❌ Cannot exclude a user from themselves.", ephemeral=True)
-            return
+        import itertools
 
-        await self.repo.add_exclusion(self.session_id, u1.id, u2.id)
+        pairs = list(itertools.combinations([u.id for u in selected_users], 2))
+        added = await self.repo.add_exclusions_bulk(self.session_id, pairs)
+
+        await self.setup_components(interaction.guild)
         embed = await self.build_exclusions_embed(interaction.guild)
-        await interaction.response.edit_message(embed=embed, view=self)
 
-    @discord.ui.button(label="Clear All Exclusions 🗑️", style=discord.ButtonStyle.danger, row=1)
-    async def clear_exclusions_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        exclusions = await self.repo.get_exclusions(self.session_id)
-        for a, b in exclusions:
-            await self.repo.remove_exclusion(self.session_id, a, b)
+        if len(selected_users) == 2:
+            conf = f"✅ **Exclusion rule added between {selected_users[0].mention} and {selected_users[1].mention}!**"
+        else:
+            conf = f"✅ **Group exclusion added:** Created {added} mutual pair rules between {len(selected_users)} members."
+
+        await interaction.response.edit_message(content=conf, embed=embed, view=self)
+
+    async def _on_remove_selected(self, interaction: discord.Interaction):
+        remove_sel = getattr(self, "remove_select", None)
+        values = remove_sel.values if remove_sel else []
+        if not values:
+            return
+        u_a_str, u_b_str = values[0].split("_")
+        u_a, u_b = int(u_a_str), int(u_b_str)
+
+        await self.repo.remove_exclusion(self.session_id, u_a, u_b)
+
+        await self.setup_components(interaction.guild)
+        embed = await self.build_exclusions_embed(interaction.guild)
+        await interaction.response.edit_message(
+            content="🗑️ **Exclusion rule removed.**",
+            embed=embed,
+            view=self,
+        )
+
+    async def _on_bulk_button(self, interaction: discord.Interaction):
+        from src.ui.modals import BulkExclusionModal
+
+        modal = BulkExclusionModal(self.repo, self.session_id)
+        await interaction.response.send_modal(modal)
+
+    async def _on_clear_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        count = await self.repo.clear_all_exclusions(self.session_id)
+        await self.setup_components(interaction.guild)
+        embed = await self.build_exclusions_embed(interaction.guild)
+        await interaction.response.edit_message(
+            content=f"🗑️ **Cleared all {count} exclusion rules.**",
+            embed=embed,
+            view=self,
+        )
+
+    async def _on_refresh_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.setup_components(interaction.guild)
         embed = await self.build_exclusions_embed(interaction.guild)
         await interaction.response.edit_message(embed=embed, view=self)
 
     async def build_exclusions_embed(self, guild: Optional[discord.Guild]) -> discord.Embed:
         exclusions = await self.repo.get_exclusions(self.session_id)
+        participants = await self.repo.get_all_participants(self.session_id)
+        p_map = {p["user_id"]: p.get("display_name") or p.get("username") for p in participants}
+
         embed = discord.Embed(
-            title="🚫 Pair Exclusion Rules",
-            description="Use the dropdown below to select 2 members (e.g. couples/roommates) who **cannot** be paired together.",
+            title="🚫 Pair & Group Exclusion Rules",
+            description=(
+                "Exclusion rules prevent pairs or groups (couples, roommates, family) "
+                "from drawing each other during the Secret Santa match.\n\n"
+                "• **Dropdown:** Select 2 members for a pair, or 3+ members for group mutual exclusion.\n"
+                "• **Bulk Paste:** Click `Bulk Add / Paste 📝` to paste multiple pairs or groups at once."
+            ),
             color=discord.Color.orange(),
         )
         if not exclusions:
-            embed.add_field(name="Current Exclusions", value="*No exclusion rules set yet.*", inline=False)
+            embed.add_field(
+                name="Current Exclusions (0)",
+                value="*No exclusion rules set yet.*",
+                inline=False,
+            )
         else:
             lines = []
             for a_id, b_id in exclusions:
                 m_a = guild.get_member(a_id) if guild else None
                 m_b = guild.get_member(b_id) if guild else None
-                name_a = m_a.display_name if m_a else f"User {a_id}"
-                name_b = m_b.display_name if m_b else f"User {b_id}"
+                name_a = (m_a.display_name if m_a else None) or p_map.get(a_id) or f"User {a_id}"
+                name_b = (m_b.display_name if m_b else None) or p_map.get(b_id) or f"User {b_id}"
                 lines.append(f"• **{name_a}** ⛔ **{name_b}**")
-            embed.add_field(name=f"Current Exclusions ({len(exclusions)})", value="\n".join(lines), inline=False)
 
-        embed.set_footer(text="Select 2 members from the dropdown to add a rule.")
+            chunk_size = 15
+            for i in range(0, len(lines), chunk_size):
+                chunk = lines[i : i + chunk_size]
+                title = f"Current Exclusions ({len(exclusions)})" if i == 0 else "Exclusions (cont.)"
+                embed.add_field(name=title, value="\n".join(chunk), inline=False)
+
+        embed.set_footer(text="Select members above, click Bulk Add, or select a rule to remove.")
         return embed
 
 
@@ -458,6 +610,7 @@ class HostControlPanel(discord.ui.View):
     @discord.ui.button(label="🚫 Exclusions", style=discord.ButtonStyle.secondary, row=1)
     async def exclusions_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         view = ExclusionManageView(self.repo, self.session_id)
+        await view.setup_components(interaction.guild)
         embed = await view.build_exclusions_embed(interaction.guild)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 

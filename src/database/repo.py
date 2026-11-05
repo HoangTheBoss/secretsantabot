@@ -239,6 +239,34 @@ class SantaRepository:
             )
             await db.commit()
 
+    async def add_exclusions_bulk(
+        self, session_id: int, pairs: list[tuple[int, int]]
+    ) -> int:
+        """Add multiple mutual exclusion pairs in a single transaction. Returns count of inserted pairs."""
+        if not pairs:
+            return 0
+        normalized = {tuple(sorted([a, b])) for a, b in pairs if a != b}
+        async with get_connection(self.db_path) as db:
+            cursor = await db.executemany(
+                """
+                INSERT OR IGNORE INTO exclusions (session_id, user_a_id, user_b_id)
+                VALUES (?, ?, ?)
+                """,
+                [(session_id, low, high) for low, high in normalized],
+            )
+            await db.commit()
+            return cursor.rowcount
+
+    async def clear_all_exclusions(self, session_id: int) -> int:
+        """Clear all exclusions for a session. Returns count of removed pairs."""
+        async with get_connection(self.db_path) as db:
+            cursor = await db.execute(
+                "DELETE FROM exclusions WHERE session_id = ?",
+                (session_id,),
+            )
+            await db.commit()
+            return cursor.rowcount
+
     async def remove_exclusion(
         self, session_id: int, user_a_id: int, user_b_id: int
     ) -> bool:

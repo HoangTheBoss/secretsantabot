@@ -269,17 +269,19 @@ class AdminCog(commands.Cog):
 
 
 
-    @group.command(name="exclude", description="Manage pair exclusions (opens interactive member picker if empty).")
+    @group.command(name="exclude", description="Manage pair & group exclusions (interactive menu or bulk input).")
     @is_admin()
     @app_commands.describe(
-        user_a="First participant (leave empty for interactive picker)",
-        user_b="Second participant (leave empty for interactive picker)",
+        user_a="First participant (optional)",
+        user_b="Second participant (optional)",
+        bulk="Bulk pairs/groups e.g. '@Alice, @Bob; @Charlie, @Dave' (optional)",
     )
     async def add_exclusion(
         self,
         interaction: discord.Interaction,
         user_a: Optional[discord.Member] = None,
         user_b: Optional[discord.Member] = None,
+        bulk: Optional[str] = None,
     ):
         session = await self.repo.get_active_session(interaction.guild_id)
         if not session:
@@ -287,26 +289,54 @@ class AdminCog(commands.Cog):
             return
 
         from src.ui.views import ExclusionManageView
+        from src.utils.exclusion_parser import parse_bulk_exclusions
 
         view = ExclusionManageView(self.repo, session["id"])
 
-        if not user_a or not user_b:
+        # Case 1: bulk argument provided
+        if bulk:
+            participants = await self.repo.get_all_participants(session["id"])
+            valid_pairs, unresolved = parse_bulk_exclusions(
+                raw_text=bulk,
+                guild=interaction.guild,
+                participants=participants,
+            )
+            added = 0
+            if valid_pairs:
+                added = await self.repo.add_exclusions_bulk(session["id"], valid_pairs)
+
+            await view.setup_components(interaction.guild)
             embed = await view.build_exclusions_embed(interaction.guild)
-            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+            msg = f"✅ **Processed bulk exclusions:** Added {added} mutual pair rule(s)."
+            if unresolved:
+                msg += f"\n⚠️ **Could not resolve {len(unresolved)} item(s):**\n" + "\n".join(
+                    f"• `{item}`" for item in unresolved[:5]
+                )
+            await interaction.response.send_message(msg, embed=embed, view=view, ephemeral=True)
             return
 
-        if user_a.id == user_b.id:
-            await interaction.response.send_message("❌ Cannot exclude a user from themselves.", ephemeral=True)
+        # Case 2: specific user_a and user_b provided
+        if user_a and user_b:
+            if user_a.id == user_b.id:
+                await interaction.response.send_message("❌ Cannot exclude a user from themselves.", ephemeral=True)
+                return
+
+            await self.repo.add_exclusion(session["id"], user_a.id, user_b.id)
+            await view.setup_components(interaction.guild)
+            embed = await view.build_exclusions_embed(interaction.guild)
+            await interaction.response.send_message(
+                f"✅ **Exclusion added between {user_a.mention} and {user_b.mention}!**",
+                embed=embed,
+                view=view,
+                ephemeral=True,
+            )
             return
 
-        await self.repo.add_exclusion(session["id"], user_a.id, user_b.id)
+        # Case 3: no arguments -> open interactive exclusion manager
+        await view.setup_components(interaction.guild)
         embed = await view.build_exclusions_embed(interaction.guild)
-        await interaction.response.send_message(
-            f"✅ **Exclusion added between {user_a.mention} and {user_b.mention}!**",
-            embed=embed,
-            view=view,
-            ephemeral=True,
-        )
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     @group.command(name="panel", description="Open the all-in-one interactive host control panel.")
     @is_admin()
