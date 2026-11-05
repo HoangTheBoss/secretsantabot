@@ -53,73 +53,71 @@ class AdminCog(commands.Cog):
 
     group = app_commands.Group(name="secretsanta", description="Secret Santa event management")
 
-    @group.command(name="setup", description="Initialize a new Secret Santa event and post registration embed.")
+    @group.command(name="setup", description="Open interactive modal to configure or update Secret Santa settings.")
     @is_admin()
-    @app_commands.describe(
-        budget="Budget ceiling (e.g. $25 - $35)",
-        party_date="Party Date & Time (e.g. Dec 24, 19:00)",
-        party_venue="Physical location (e.g. Alice's house)",
-        signup_deadline="Sign-up deadline (e.g. '3d', '7 days', '2026-12-10 20:00')",
-        auto_draw="Automatically draw pairs when the sign-up deadline arrives",
-    )
-    async def setup_event(
-        self,
-        interaction: discord.Interaction,
-        budget: Optional[str] = None,
-        party_date: Optional[str] = None,
-        party_venue: Optional[str] = None,
-        signup_deadline: Optional[str] = None,
-        auto_draw: bool = True,
-    ):
+    async def setup_event(self, interaction: discord.Interaction):
         guild_id = interaction.guild_id
         channel_id = interaction.channel_id
         if not guild_id or not channel_id:
             return
 
-        deadline_str = None
-        deadline_epoch = None
-        if signup_deadline:
-            try:
-                _, deadline_epoch, deadline_str = parse_deadline(signup_deadline)
-            except ValueError as e:
-                await interaction.response.send_message(f"⚠️ {e}", ephemeral=True)
-                return
-
         # Check existing active session
         existing = await self.repo.get_active_session(guild_id)
-        if existing and existing.get("status") in ("REGISTRATION", "IN_PROGRESS"):
+        if existing:
             session_id = existing["id"]
-            await self.repo.update_session_details(
-                session_id=session_id,
-                budget=budget,
-                party_date=party_date,
-                party_venue=party_venue,
-                signup_deadline=deadline_str,
-                signup_deadline_epoch=deadline_epoch,
-                auto_draw=auto_draw,
-            )
         else:
             session_id = await self.repo.create_session(
                 guild_id=guild_id,
                 channel_id=channel_id,
-                budget=budget,
-                party_date=party_date,
-                party_venue=party_venue,
-                signup_deadline=deadline_str,
-                signup_deadline_epoch=deadline_epoch,
-                auto_draw=auto_draw,
             )
+            existing = await self.repo.get_session_by_id(session_id)
 
-        session = await self.repo.get_session_by_id(session_id)
-        participants = await self.repo.get_all_participants(session_id)
+        from src.ui.modals import SetupModal
 
-        embed = build_registration_embed(session or {}, participants)
-        view = RegistrationView(repo=self.repo, session_id=session_id)
+        modal = SetupModal(
+            repo=self.repo,
+            session_id=session_id,
+            channel_id=existing.get("channel_id") or channel_id,
+            existing_budget=existing.get("budget") or "",
+            existing_party_date=existing.get("party_date") or "",
+            existing_party_venue=existing.get("party_venue") or "",
+            existing_deadline=existing.get("signup_deadline") or "",
+        )
+        await interaction.response.send_modal(modal)
 
-        # Register persistent view in bot
-        self.bot.add_view(view)
+    @group.command(name="reset", description="Cancel or wipe the active Secret Santa session to start fresh.")
+    @is_admin()
+    async def reset_event(self, interaction: discord.Interaction):
+        session = await self.repo.get_active_session(interaction.guild_id)
+        if not session:
+            await interaction.response.send_message("❌ No active Secret Santa session found to reset.", ephemeral=True)
+            return
 
-        await interaction.response.send_message(embed=embed, view=view)
+        class ConfirmResetView(discord.ui.View):
+            def __init__(self, repo: SantaRepository, session_id: int):
+                super().__init__(timeout=60)
+                self.repo = repo
+                self.session_id = session_id
+
+            @discord.ui.button(label="Confirm Reset ⚠️", style=discord.ButtonStyle.danger)
+            async def confirm(self, btn_interaction: discord.Interaction, button: discord.ui.Button):
+                await self.repo.archive_or_cancel_session(self.session_id, status="CANCELLED")
+                await btn_interaction.response.send_message(
+                    "🗑️ **Secret Santa event has been cancelled.** You can now run `/secretsanta setup` to start fresh.",
+                    ephemeral=True,
+                )
+
+            @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+            async def cancel(self, btn_interaction: discord.Interaction, button: discord.ui.Button):
+                await btn_interaction.response.send_message("Action cancelled.", ephemeral=True)
+
+        await interaction.response.send_message(
+            "⚠️ **Are you sure you want to cancel the active Secret Santa session?**\n"
+            "This will archive the current event, cancel any pending auto-draws, and allow you to configure a fresh event.",
+            view=ConfirmResetView(self.repo, session["id"]),
+            ephemeral=True,
+        )
+
 
 
     @group.command(name="poll", description="Post an interactive voting poll in the channel.")

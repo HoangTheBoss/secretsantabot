@@ -154,3 +154,131 @@ class AnonymousMessageModal(discord.ui.Modal):
                 "❌ **Could not deliver the message.** The recipient may have DMs closed or blocked the bot.",
                 ephemeral=True,
             )
+
+
+class SetupModal(discord.ui.Modal, title="Secret Santa: Event Settings"):
+    """Modal for configuring or updating Secret Santa event parameters."""
+
+    def __init__(
+        self,
+        repo: "SantaRepository",
+        session_id: int,
+        channel_id: int,
+        existing_budget: str = "",
+        existing_party_date: str = "",
+        existing_party_venue: str = "",
+        existing_deadline: str = "",
+    ):
+        super().__init__()
+        self.repo = repo
+        self.session_id = session_id
+        self.channel_id = channel_id
+
+        self.budget_input = discord.ui.TextInput(
+            label="💰 Budget Ceiling",
+            placeholder="e.g. $25 - $35",
+            default=existing_budget,
+            required=False,
+            max_length=100,
+        )
+        self.add_item(self.budget_input)
+
+        self.party_date_input = discord.ui.TextInput(
+            label="📅 Party Date & Time (Vietnam Time)",
+            placeholder="e.g. Dec 24, 19:00 or 2026-12-24 19:00",
+            default=existing_party_date,
+            required=False,
+            max_length=100,
+        )
+        self.add_item(self.party_date_input)
+
+        self.party_venue_input = discord.ui.TextInput(
+            label="📍 Party Venue / Location",
+            placeholder="e.g. Alice's House / Bistro 42",
+            default=existing_party_venue,
+            required=False,
+            max_length=150,
+        )
+        self.add_item(self.party_venue_input)
+
+        self.deadline_input = discord.ui.TextInput(
+            label="⏰ Sign-Up Deadline (Auto-Draws Pairs)",
+            placeholder="e.g. 3d, 7 days, or 2026-12-10 20:00",
+            default=existing_deadline,
+            required=False,
+            max_length=100,
+        )
+        self.add_item(self.deadline_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        from src.utils.time_parser import parse_deadline, format_discord_timestamp
+        from src.ui.embeds import build_registration_embed
+        from src.ui.views import RegistrationView
+
+        budget = self.budget_input.value.strip() or None
+        party_date = self.party_date_input.value.strip() or None
+        party_venue = self.party_venue_input.value.strip() or None
+        deadline_raw = self.deadline_input.value.strip()
+
+        deadline_str = None
+        deadline_epoch = None
+        if deadline_raw:
+            try:
+                _, deadline_epoch, deadline_str = parse_deadline(deadline_raw)
+            except ValueError as e:
+                await interaction.response.send_message(f"⚠️ {e}", ephemeral=True)
+                return
+
+        # Update in database
+        await self.repo.update_session_details(
+            session_id=self.session_id,
+            budget=budget,
+            party_date=party_date,
+            party_venue=party_venue,
+            signup_deadline=deadline_str,
+            signup_deadline_epoch=deadline_epoch,
+            auto_draw=True if deadline_epoch else False,
+        )
+
+        session = await self.repo.get_session_by_id(self.session_id)
+        participants = await self.repo.get_all_participants(self.session_id)
+
+        embed = build_registration_embed(session or {}, participants)
+        view = RegistrationView(repo=self.repo, session_id=self.session_id)
+        interaction.client.add_view(view)
+
+        # Check existing channel message
+        target_channel = interaction.client.get_channel(self.channel_id)
+        if not target_channel:
+            try:
+                target_channel = await interaction.client.fetch_channel(self.channel_id)
+            except Exception:
+                target_channel = None
+
+        if not target_channel or not isinstance(target_channel, discord.TextChannel):
+            await interaction.response.send_message(
+                "⚠️ Settings saved, but could not find the target text channel.", ephemeral=True
+            )
+            return
+
+        existing_msg_id = session.get("registration_message_id") if session else None
+        updated_existing = False
+
+        if existing_msg_id:
+            try:
+                existing_msg = await target_channel.fetch_message(existing_msg_id)
+                await existing_msg.edit(embed=embed, view=view)
+                updated_existing = True
+            except Exception:
+                logger.info("Could not fetch existing registration message %s, posting fresh message", existing_msg_id)
+
+        if not updated_existing:
+            new_msg = await target_channel.send(embed=embed, view=view)
+            await self.repo.update_registration_message_id(self.session_id, new_msg.id)
+
+        conf_msg = "✅ **Secret Santa event settings updated!** Channel card refreshed in-place." if updated_existing else "✅ **Secret Santa event initialized!** Registration card posted."
+        if deadline_epoch:
+            conf_msg += f"\n⏳ **Draw scheduled for:** {format_discord_timestamp(deadline_epoch)}"
+
+        await interaction.response.send_message(conf_msg, ephemeral=True)
+

@@ -87,6 +87,7 @@ class SantaRepository:
         signup_deadline: Optional[str] = None,
         signup_deadline_epoch: Optional[int] = None,
         auto_draw: Optional[bool] = None,
+        registration_message_id: Optional[int] = None,
     ) -> None:
         """Update event details."""
         updates: list[str] = []
@@ -110,6 +111,9 @@ class SantaRepository:
         if auto_draw is not None:
             updates.append("auto_draw = ?")
             params.append(1 if auto_draw else 0)
+        if registration_message_id is not None:
+            updates.append("registration_message_id = ?")
+            params.append(registration_message_id)
 
         if not updates:
             return
@@ -119,6 +123,25 @@ class SantaRepository:
         async with get_connection(self.db_path) as db:
             await db.execute(query, tuple(params))
             await db.commit()
+
+    async def update_registration_message_id(self, session_id: int, message_id: int) -> None:
+        """Record the Discord message ID of the channel registration embed."""
+        async with get_connection(self.db_path) as db:
+            await db.execute(
+                "UPDATE game_sessions SET registration_message_id = ? WHERE id = ?",
+                (message_id, session_id),
+            )
+            await db.commit()
+
+    async def archive_or_cancel_session(self, session_id: int, status: str = "CANCELLED") -> None:
+        """Cancel or archive active session."""
+        async with get_connection(self.db_path) as db:
+            await db.execute(
+                "UPDATE game_sessions SET status = ? WHERE id = ?",
+                (status, session_id),
+            )
+            await db.commit()
+
 
 
     async def add_or_update_participant(

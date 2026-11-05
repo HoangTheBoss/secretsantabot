@@ -135,8 +135,25 @@ class RegistrationView(discord.ui.View):
             embed = build_registration_embed(session, participants)
             if interaction.message:
                 await interaction.message.edit(embed=embed, view=self)
+            else:
+                channel_id = session.get("channel_id")
+                msg_id = session.get("registration_message_id")
+                if channel_id and msg_id:
+                    channel = interaction.client.get_channel(channel_id)
+                    if not channel:
+                        try:
+                            channel = await interaction.client.fetch_channel(channel_id)
+                        except Exception:
+                            channel = None
+                    if channel and isinstance(channel, discord.TextChannel):
+                        try:
+                            msg = await channel.fetch_message(msg_id)
+                            await msg.edit(embed=embed, view=self)
+                        except Exception:
+                            pass
         except Exception as e:
             logger.error("Failed to refresh channel message: %s", e)
+
 
 
 class SantaDmView(discord.ui.View):

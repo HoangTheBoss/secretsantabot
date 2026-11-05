@@ -115,3 +115,13 @@ async def test_auto_draw_deadline_repo(temp_repo):
     due_disabled = await temp_repo.get_due_auto_draw_sessions(current_epoch=2000)
     assert len(due_disabled) == 0
 
+    # Test registration message id and session cancellation
+    await temp_repo.update_registration_message_id(session_id, 987654321)
+    updated = await temp_repo.get_session_by_id(session_id)
+    assert updated["registration_message_id"] == 987654321
+
+    await temp_repo.archive_or_cancel_session(session_id, status="CANCELLED")
+    cancelled = await temp_repo.get_active_session(777)
+    assert cancelled is None
+
+

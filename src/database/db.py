@@ -24,9 +24,11 @@ CREATE TABLE IF NOT EXISTS game_sessions (
     signup_deadline_epoch INTEGER,
     auto_draw BOOLEAN DEFAULT 1,
     triggered_milestones TEXT DEFAULT '',
+    registration_message_id INTEGER,
     last_reminded_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
 
 
 
@@ -118,9 +120,15 @@ async def init_db(db_path: str = DATABASE_PATH) -> None:
             pass  # Already exists
 
         try:
+            await db.execute("ALTER TABLE game_sessions ADD COLUMN registration_message_id INTEGER;")
+        except Exception:
+            pass  # Already exists
+
+        try:
             await db.execute("ALTER TABLE pairings ADD COLUMN triggered_milestones TEXT DEFAULT '';")
         except Exception:
             pass  # Already exists
+
 
         try:
             await db.execute("ALTER TABLE pairings ADD COLUMN last_reminded_at TIMESTAMP;")

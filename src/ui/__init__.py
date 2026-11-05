@@ -10,7 +10,7 @@ from .embeds import (
     build_milestone_reminder_embed,
 )
 
-from .modals import WishlistModal, AnonymousMessageModal
+from .modals import WishlistModal, AnonymousMessageModal, SetupModal
 from .views import RegistrationView, SantaDmView, BabyReplyView, PollView
 
 __all__ = [
@@ -23,11 +23,12 @@ __all__ = [
     "build_dm_reminder_embed",
     "build_milestone_reminder_embed",
     "WishlistModal",
-
     "AnonymousMessageModal",
+    "SetupModal",
     "RegistrationView",
     "SantaDmView",
     "BabyReplyView",
     "PollView",
 ]
+
 
