@@ -412,6 +412,10 @@ class RemindMenuView(discord.ui.View):
                         party_date=session.get("party_date"),
                         party_venue=session.get("party_venue"),
                         custom_note=note,
+                        event_name=session.get("event_name"),
+                        logo_url=session.get("logo_url"),
+                        footer_text=session.get("footer_text"),
+                        theme_color=session.get("theme_color"),
                     )
                     view = SantaDmView(repo=self.repo, session_id=self.session_id, baby_id=p["baby_id"])
                     await user.send(embed=embed, view=view)
@@ -453,6 +457,17 @@ class HostControlPanel(discord.ui.View):
             existing_party_venue=session.get("party_venue") or "",
             existing_deadline=session.get("signup_deadline") or "",
         )
+        await interaction.response.send_modal(modal)
+
+    @discord.ui.button(label="🎨 Branding", style=discord.ButtonStyle.secondary, row=0)
+    async def branding_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        from src.ui.modals import BrandingModal
+
+        session = await self.repo.get_session_by_id(self.session_id)
+        if not session:
+            await interaction.response.send_message("❌ Active session not found.", ephemeral=True)
+            return
+        modal = BrandingModal(repo=self.repo, session=session)
         await interaction.response.send_modal(modal)
 
     @discord.ui.button(label="📊 Create Poll", style=discord.ButtonStyle.secondary, row=0)

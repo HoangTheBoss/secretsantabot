@@ -92,6 +92,11 @@ class SantaRepository:
         signup_deadline_epoch: Any = UNSET,
         auto_draw: Any = UNSET,
         registration_message_id: Any = UNSET,
+        event_name: Any = UNSET,
+        logo_url: Any = UNSET,
+        banner_url: Any = UNSET,
+        footer_text: Any = UNSET,
+        theme_color: Any = UNSET,
     ) -> None:
         """Update event details."""
         updates: list[str] = []
@@ -118,6 +123,22 @@ class SantaRepository:
         if registration_message_id is not UNSET:
             updates.append("registration_message_id = ?")
             params.append(registration_message_id)
+        if event_name is not UNSET:
+            updates.append("event_name = ?")
+            params.append(event_name)
+        if logo_url is not UNSET:
+            updates.append("logo_url = ?")
+            params.append(logo_url)
+        if banner_url is not UNSET:
+            updates.append("banner_url = ?")
+            params.append(banner_url)
+        if footer_text is not UNSET:
+            updates.append("footer_text = ?")
+            params.append(footer_text)
+        if theme_color is not UNSET:
+            updates.append("theme_color = ?")
+            params.append(theme_color)
+
 
         if not updates:
             return

@@ -59,6 +59,16 @@ CREATE TABLE IF NOT EXISTS game_sessions (
     party_date TEXT,                      -- e.g. "2026-12-24 19:00"
     party_venue TEXT,                     -- e.g. "Alice's Place / Bistro 42"
     signup_deadline TEXT,
+    signup_deadline_epoch INTEGER,
+    auto_draw BOOLEAN DEFAULT 1,
+    triggered_milestones TEXT DEFAULT '',
+    registration_message_id INTEGER,
+    event_name TEXT DEFAULT 'Buda Secret Santa',
+    logo_url TEXT,
+    banner_url TEXT,
+    footer_text TEXT,
+    theme_color TEXT,
+    last_reminded_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -142,6 +152,7 @@ CREATE TABLE IF NOT EXISTS relay_messages (
 ### 4.4 All-in-One Host Control Panel (`/secretsanta panel`)
 - Host can run `/secretsanta panel` to open a unified interactive dashboard featuring:
   - `[ ⚙️ Settings ]`: Opens `SetupModal`
+  - `[ 🎨 Branding ]`: Opens `BrandingModal`
   - `[ 📊 Create Poll ]`: Opens `CreatePollModal`
   - `[ ⏰ Set Deadline ]`: Opens `DeadlineModal`
   - `[ 🚫 Exclusions ]`: Opens `ExclusionManageView`
@@ -149,8 +160,17 @@ CREATE TABLE IF NOT EXISTS relay_messages (
   - `[ 🔒 Master Sheet ]`: Displays secret cheat sheet
   - `[ 🎲 Draw Pairs ]`: Manually executes the draw
 
+### 4.5 Custom Branding & Appearance Engine
+- Configurable via `/secretsanta branding` slash command or the `[ 🎨 Branding ]` panel button:
+  - **Event Name:** Replaces default titles across public cards and private DMs (e.g. `Buda Secret Santa 2026`).
+  - **Theme Color:** Supports named color constants (`RED`, `GREEN`, `GOLD`, `BLUE`, `PURPLE`, etc.) or custom hex values (`#E74C3C`).
+  - **Logo / Thumbnail URL:** Appears as thumbnail on registration & progress cards and author icon on Santa assignment DMs.
+  - **Banner Image URL:** Displays high-resolution banner image across registration and progress cards.
+  - **Footer Text & Icon:** Custom signature text and logo shown on embeds.
+- Updates immediately refresh the channel's registration message in-place without reposting or spamming chat.
+- Defaults configurable via environment variables (`DEFAULT_EVENT_NAME`, `DEFAULT_LOGO_URL`, `DEFAULT_BANNER_URL`, `DEFAULT_FOOTER_TEXT`, `DEFAULT_THEME_COLOR`).
 
-### 4.4 Matching & Secret DM Dispatch
+### 4.6 Matching & Secret DM Dispatch
 - **Manual Draw:** The host can manually execute the draw anytime using `/secretsanta draw`.
 - **Automatic Draw on Deadline:**
   - When configuring `/secretsanta setup` or `/secretsanta set_deadline deadline:"3d" auto_draw:True`, the bot monitors the deadline epoch timestamp in a background loop.
@@ -163,14 +183,14 @@ CREATE TABLE IF NOT EXISTS relay_messages (
   - If fewer than 3 participants joined by deadline, the bot posts a friendly warning postponing the draw and keeping registration open.
 
 
-### 4.5 Anonymous Q&A Relay
+### 4.7 Anonymous Q&A Relay
 - Santa clicks **[Ask Baby Anonymously ✉️]** in their DM $\to$ opens modal $\to$ submits question.
 - Bot relays the question to Baby's DM:
   > *"📩 Message from your Secret Santa: 'What is your T-shirt size?'"*
   > `[ Reply to Secret Santa ↩️ ]`
 - Baby replies via modal; bot relays answer back to Santa.
 
-### 4.6 Preparation Tracker & Countdown
+### 4.8 Preparation Tracker & Countdown
 - The main channel displays an auto-updating embed:
   > **🎄 Secret Santa Countdown to the Party!**
   > ⏳ **Days remaining:** 4 days (Dec 22, 19:00)
@@ -181,7 +201,7 @@ CREATE TABLE IF NOT EXISTS relay_messages (
   > `[████████░░]` **7 / 9 Santas have wrapped their gifts!**
 - No names are spoiled publicly.
 
-### 4.7 Routine Updates & Reminders System
+### 4.9 Routine Updates & Reminders System
 - **Timezone Standard:** Defaults to **Vietnam Time (`Asia/Ho_Chi_Minh` / ICT / UTC+7)**. All date strings (e.g. `Dec 15 20:00`) are parsed relative to GMT+7, with Discord dynamic tags `<t:EPOCH:F>` displaying the equivalent in every user's local device time.
 - **Background Task (`discord.ext.tasks`):**
   - Runs routine reminder loops and checks auto-draw/milestones every 30 seconds.
@@ -196,7 +216,6 @@ CREATE TABLE IF NOT EXISTS relay_messages (
     - **1 Hour:** Final 60-minute call before pairs are locked and drawn.
   - Each milestone triggers at most once via database milestone tracking (`triggered_milestones`).
 - **Smart DM Nudges for Santas:**
-
   - Automatically queries Santas whose gifts are still `NOT_STARTED` or `BOUGHT` (ignoring Santas who already wrapped).
   - Delivers a private DM embed reminding them of their target's name, physical gift tag code, and interactive buttons to mark as wrapped or ask questions.
 - **On-Demand Admin Commands:**
@@ -204,7 +223,6 @@ CREATE TABLE IF NOT EXISTS relay_messages (
   - `/remind dms [custom_note]`: Immediately sends reminder DMs to all unwrapped Santas.
   - `/remind user member:<Member> [custom_note]`: Sends a reminder DM to a specific user.
 
-### 4.8 Host Emergency Backup
-
+### 4.10 Host Emergency Backup
 - `/secretsanta admin export`: Ephemerally sends the organizer a private master cheat sheet (or CSV/text summary) of all pairings and gift codes in case someone forgets who they have on party day.
 - `/secretsanta admin resend @participant`: Privately re-sends a participant their target info DM.

@@ -85,6 +85,25 @@ class AdminCog(commands.Cog):
         )
         await interaction.response.send_modal(modal)
 
+    @group.command(name="branding", description="Open interactive modal to configure event branding (name, logo, banner, color, footer).")
+    @is_admin()
+    async def branding_event(self, interaction: discord.Interaction):
+        guild_id = interaction.guild_id
+        if not guild_id:
+            return
+
+        existing = await self.repo.get_active_session(guild_id)
+        if not existing:
+            await interaction.response.send_message(
+                "❌ No active Secret Santa session found. Run `/secretsanta setup` first.", ephemeral=True
+            )
+            return
+
+        from src.ui.modals import BrandingModal
+
+        modal = BrandingModal(repo=self.repo, session=existing)
+        await interaction.response.send_modal(modal)
+
     @group.command(name="reset", description="Cancel or wipe the active Secret Santa session to start fresh.")
     @is_admin()
     async def reset_event(self, interaction: discord.Interaction):
@@ -495,6 +514,10 @@ class AdminCog(commands.Cog):
                 budget=session.get("budget"),
                 party_date=session.get("party_date"),
                 party_venue=session.get("party_venue"),
+                event_name=session.get("event_name"),
+                logo_url=session.get("logo_url"),
+                footer_text=session.get("footer_text"),
+                theme_color=session.get("theme_color"),
             )
             view = SantaDmView(repo=self.repo, session_id=session["id"], baby_id=pairing["baby_id"])
             await member.send(embed=embed, view=view)

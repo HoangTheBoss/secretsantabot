@@ -55,5 +55,13 @@ try:
 except ValueError:
     ROUTINE_REMINDER_HOURS = 24
 
+# Default Branding & Appearance
+DEFAULT_EVENT_NAME = os.getenv("DEFAULT_EVENT_NAME", "Buda Secret Santa")
+DEFAULT_LOGO_URL = os.getenv("DEFAULT_LOGO_URL", "")
+DEFAULT_BANNER_URL = os.getenv("DEFAULT_BANNER_URL", "")
+DEFAULT_FOOTER_TEXT = os.getenv("DEFAULT_FOOTER_TEXT", "Buda Secret Santa • Happy Holidays! 🎄")
+DEFAULT_THEME_COLOR = os.getenv("DEFAULT_THEME_COLOR", "RED")
+
 # Logging
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+

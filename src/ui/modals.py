@@ -2,7 +2,7 @@
 
 import discord
 import logging
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Any
 
 if TYPE_CHECKING:
     from src.database.repo import SantaRepository
@@ -465,5 +465,124 @@ class RemindNoteModal(discord.ui.Modal):
     async def on_submit(self, interaction: discord.Interaction):
         note = self.note_input.value.strip() or None
         await self.on_submit_callback(interaction, note)
+
+
+class BrandingModal(discord.ui.Modal, title="🎨 Event Branding & Appearance"):
+    """Modal for configuring event name, logo thumbnail, banner image, footer, and theme color."""
+
+    def __init__(
+        self,
+        repo: "SantaRepository",
+        session: dict[str, Any],
+    ):
+        super().__init__()
+        self.repo = repo
+        self.session = session
+        self.session_id = session["id"]
+
+        self.event_name_input = discord.ui.TextInput(
+            label="🎉 Event Name / Title",
+            placeholder="e.g. Buda Secret Santa 2026",
+            default=session.get("event_name") or "",
+            required=False,
+            max_length=100,
+        )
+        self.add_item(self.event_name_input)
+
+        self.theme_color_input = discord.ui.TextInput(
+            label="🎨 Theme Color (Hex or Name)",
+            placeholder="e.g. RED, GREEN, GOLD, BLUE, or #E74C3C",
+            default=session.get("theme_color") or "",
+            required=False,
+            max_length=20,
+        )
+        self.add_item(self.theme_color_input)
+
+        self.logo_url_input = discord.ui.TextInput(
+            label="🖼️ Logo / Icon URL (Thumbnail)",
+            placeholder="https://.../logo.png",
+            default=session.get("logo_url") or "",
+            required=False,
+            max_length=300,
+        )
+        self.add_item(self.logo_url_input)
+
+        self.banner_url_input = discord.ui.TextInput(
+            label="🚩 Banner Image URL",
+            placeholder="https://.../banner.png",
+            default=session.get("banner_url") or "",
+            required=False,
+            max_length=300,
+        )
+        self.add_item(self.banner_url_input)
+
+        self.footer_text_input = discord.ui.TextInput(
+            label="📝 Footer Text",
+            placeholder="e.g. Buda Holiday Season 2026",
+            default=session.get("footer_text") or "",
+            required=False,
+            max_length=150,
+        )
+        self.add_item(self.footer_text_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        from src.ui.embeds import build_registration_embed
+        from src.ui.views import RegistrationView
+
+        event_name = self.event_name_input.value.strip() or None
+        theme_color = self.theme_color_input.value.strip() or None
+        logo_url = self.logo_url_input.value.strip() or None
+        banner_url = self.banner_url_input.value.strip() or None
+        footer_text = self.footer_text_input.value.strip() or None
+
+        await self.repo.update_session_details(
+            session_id=self.session_id,
+            event_name=event_name,
+            theme_color=theme_color,
+            logo_url=logo_url,
+            banner_url=banner_url,
+            footer_text=footer_text,
+        )
+
+        updated_session = await self.repo.get_session_by_id(self.session_id)
+        participants = await self.repo.get_all_participants(self.session_id)
+
+        # Refresh channel registration card in-place if message exists
+        channel_updated = False
+        ch_id = updated_session.get("channel_id") if updated_session else None
+        msg_id = updated_session.get("registration_message_id") if updated_session else None
+
+        if ch_id and msg_id:
+            target_channel = interaction.client.get_channel(ch_id)
+            if not target_channel:
+                try:
+                    target_channel = await interaction.client.fetch_channel(ch_id)
+                except Exception:
+                    target_channel = None
+
+            if target_channel and isinstance(target_channel, discord.TextChannel):
+                try:
+                    existing_msg = await target_channel.fetch_message(msg_id)
+                    embed = build_registration_embed(updated_session or {}, participants)
+                    view = RegistrationView(repo=self.repo, session_id=self.session_id)
+                    interaction.client.add_view(view)
+                    await existing_msg.edit(embed=embed, view=view)
+                    channel_updated = True
+                except Exception as e:
+                    logger.warning("Could not refresh registration message %s: %s", msg_id, e)
+
+        status_note = " Main registration card updated in-place!" if channel_updated else ""
+        summary_lines = [
+            f"• **Event Name:** {event_name or 'Default'}",
+            f"• **Theme Color:** {theme_color or 'Default'}",
+            f"• **Logo / Icon:** {'Configured' if logo_url else 'None / Default'}",
+            f"• **Banner Image:** {'Configured' if banner_url else 'None / Default'}",
+            f"• **Footer Text:** {footer_text or 'Default'}",
+        ]
+        await interaction.response.send_message(
+            f"🎨 **Event branding updated successfully!**{status_note}\n" + "\n".join(summary_lines),
+            ephemeral=True,
+        )
+
 
 

@@ -17,6 +17,7 @@ from .modals import (
     CreatePollModal,
     DeadlineModal,
     RemindNoteModal,
+    BrandingModal,
 )
 from .views import (
     RegistrationView,
@@ -44,6 +45,7 @@ __all__ = [
     "CreatePollModal",
     "DeadlineModal",
     "RemindNoteModal",
+    "BrandingModal",
     "RegistrationView",
     "SantaDmView",
     "BabyReplyView",

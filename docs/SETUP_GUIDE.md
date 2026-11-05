@@ -87,6 +87,13 @@ DATABASE_PATH=data/secretsanta.db
 
 # Logging Level (DEBUG, INFO, WARNING, ERROR)
 LOG_LEVEL=INFO
+
+# Branding & Appearance Defaults (Optional)
+DEFAULT_EVENT_NAME=Buda Secret Santa
+DEFAULT_LOGO_URL=https://example.com/logo.png
+DEFAULT_BANNER_URL=https://example.com/banner.png
+DEFAULT_FOOTER_TEXT=Buda Secret Santa • Ho Ho Ho!
+DEFAULT_THEME_COLOR=RED
 ```
 
 ---

@@ -2,9 +2,48 @@
 
 import discord
 from typing import Any, Optional
+from src.config import (
+    DEFAULT_EVENT_NAME,
+    DEFAULT_LOGO_URL,
+    DEFAULT_BANNER_URL,
+    DEFAULT_FOOTER_TEXT,
+    DEFAULT_THEME_COLOR,
+)
+
+
+def resolve_color(color_str: Optional[str], default: discord.Color = discord.Color.red()) -> discord.Color:
+    """Resolve a color name or hex code to a discord.Color."""
+    if not color_str:
+        return default
+    clean = color_str.strip().upper()
+
+    named_colors = {
+        "RED": discord.Color.red(),
+        "GREEN": discord.Color.green(),
+        "GOLD": discord.Color.gold(),
+        "YELLOW": discord.Color.yellow(),
+        "BLUE": discord.Color.blue(),
+        "BLURPLE": discord.Color.blurple(),
+        "PURPLE": discord.Color.purple(),
+        "DARK_RED": discord.Color.dark_red(),
+        "TEAL": discord.Color.teal(),
+        "ORANGE": discord.Color.orange(),
+    }
+    if clean in named_colors:
+        return named_colors[clean]
+
+    hex_clean = clean.lstrip("#")
+    if len(hex_clean) == 6:
+        try:
+            return discord.Color(int(hex_clean, 16))
+        except ValueError:
+            pass
+
+    return default
 
 
 def create_progress_bar(current: int, total: int, bar_length: int = 10) -> str:
+
     """Generate a visual text progress bar: [████████░░]."""
     if total <= 0:
         return f"[{'░' * bar_length}] 0%"
@@ -25,9 +64,12 @@ def build_registration_embed(
     party_date = session.get("party_date") or "To be announced"
     party_venue = session.get("party_venue") or "To be announced"
 
-    color = discord.Color.green() if status == "REGISTRATION" else discord.Color.gold()
+    event_name = session.get("event_name") or DEFAULT_EVENT_NAME
+    default_c = discord.Color.green() if status == "REGISTRATION" else discord.Color.gold()
+    color = resolve_color(session.get("theme_color") or DEFAULT_THEME_COLOR, default=default_c)
+
     embed = discord.Embed(
-        title="🎄 Buda Secret Santa: Annual Gift Exchange 🎅",
+        title=f"🎄 {event_name} 🎅",
         description=(
             "Welcome to our private Secret Santa game! Sign up below, submit your wishlist, "
             "and get ready for our in-person holiday party.\n\n"
@@ -36,6 +78,15 @@ def build_registration_embed(
         ),
         color=color,
     )
+
+    logo_url = session.get("logo_url") or DEFAULT_LOGO_URL or None
+    banner_url = session.get("banner_url") or DEFAULT_BANNER_URL or None
+    footer_text = session.get("footer_text") or DEFAULT_FOOTER_TEXT
+
+    if logo_url:
+        embed.set_thumbnail(url=logo_url)
+    if banner_url:
+        embed.set_image(url=banner_url)
 
     embed.add_field(name="💰 Budget Limit", value=budget, inline=True)
     embed.add_field(name="📅 Party Date", value=party_date, inline=True)
@@ -52,7 +103,6 @@ def build_registration_embed(
         embed.add_field(name="⏰ Sign-Up Deadline", value=session["signup_deadline"], inline=False)
 
     # Participant roster
-
     count = len(participants)
     if count == 0:
         names_text = "*No participants registered yet. Be the first to join!*"
@@ -69,8 +119,13 @@ def build_registration_embed(
         inline=False,
     )
 
-    embed.set_footer(text="Click [Join 🎁] below to enter your wishlist and register!")
+    if logo_url:
+        embed.set_footer(text=f"{footer_text} • Click [Join 🎁] to participate!", icon_url=logo_url)
+    else:
+        embed.set_footer(text=f"{footer_text} • Click [Join 🎁] to participate!")
+
     return embed
+
 
 
 def build_santa_dm_embed(
@@ -84,19 +139,31 @@ def build_santa_dm_embed(
     budget: Optional[str] = None,
     party_date: Optional[str] = None,
     party_venue: Optional[str] = None,
+    event_name: Optional[str] = None,
+    logo_url: Optional[str] = None,
+    footer_text: Optional[str] = None,
+    theme_color: Optional[str] = None,
 ) -> discord.Embed:
     """Secret DM embed sent to Santa."""
+    name_display = event_name or DEFAULT_EVENT_NAME
+    color = resolve_color(theme_color or DEFAULT_THEME_COLOR, default=discord.Color.red())
+    resolved_logo = logo_url or DEFAULT_LOGO_URL or None
+    resolved_footer = footer_text or DEFAULT_FOOTER_TEXT
+
     embed = discord.Embed(
-        title="🎅 Shh! Your Secret Santa Assignment is Here!",
+        title=f"🎅 Shh! Your {name_display} Assignment is Here!",
         description=(
             f"You have been secretly chosen as the Santa for **{baby_name}** (@{baby_username})!\n"
             "Keep this strictly confidential until the in-person party!"
         ),
-        color=discord.Color.red(),
+        color=color,
     )
 
     if avatar_url:
         embed.set_thumbnail(url=avatar_url)
+
+    if resolved_logo:
+        embed.set_author(name=name_display, icon_url=resolved_logo)
 
     embed.add_field(
         name="🎁 Baby's Wishlist & Interests",
@@ -134,9 +201,11 @@ def build_santa_dm_embed(
     if meta_info:
         embed.add_field(name="📌 Event Info", value="\n".join(meta_info), inline=False)
 
-    embed.set_footer(
-        text="Need to ask a size or preference? Click [Ask Baby Anonymously ✉️] below!"
-    )
+    footer_str = f"{resolved_footer} • Need to ask a size or preference? Click [Ask Baby Anonymously ✉️] below!"
+    if resolved_logo:
+        embed.set_footer(text=footer_str, icon_url=resolved_logo)
+    else:
+        embed.set_footer(text=footer_str)
     return embed
 
 
@@ -152,16 +221,27 @@ def build_prep_dashboard_embed(
     party_date = session.get("party_date") or "Upcoming"
     party_venue = session.get("party_venue") or "Party Venue"
 
+    event_name = session.get("event_name") or DEFAULT_EVENT_NAME
+    color = resolve_color(session.get("theme_color") or DEFAULT_THEME_COLOR, default=discord.Color.blurple())
+    logo_url = session.get("logo_url") or DEFAULT_LOGO_URL or None
+    banner_url = session.get("banner_url") or DEFAULT_BANNER_URL or None
+    footer_text = session.get("footer_text") or DEFAULT_FOOTER_TEXT
+
     embed = discord.Embed(
-        title="🎁 Secret Santa Preparation Dashboard",
+        title=f"🎁 {event_name} Preparation Dashboard",
         description=(
             f"Here is how our group is progressing toward party day!\n"
             f"📅 **Party Date:** {party_date}\n"
             f"📍 **Venue:** {party_venue}\n\n"
             f"**Wrapped & Ready:**\n{create_progress_bar(wrapped, total)}\n"
         ),
-        color=discord.Color.blurple(),
+        color=color,
     )
+
+    if logo_url:
+        embed.set_thumbnail(url=logo_url)
+    if banner_url:
+        embed.set_image(url=banner_url)
 
     embed.add_field(
         name="📊 Breakdown (Spoiler-Free)",
@@ -173,7 +253,15 @@ def build_prep_dashboard_embed(
         inline=False,
     )
 
-    embed.set_footer(text="Santas can update their gift prep status privately in their DM with the bot!")
+    if logo_url:
+        embed.set_footer(
+            text=f"{footer_text} • Santas can update their gift prep status privately in their DM with the bot!",
+            icon_url=logo_url,
+        )
+    else:
+        embed.set_footer(
+            text=f"{footer_text} • Santas can update their gift prep status privately in their DM with the bot!"
+        )
     return embed
 
 
@@ -239,14 +327,21 @@ def build_public_reminder_embed(
     party_date = session.get("party_date") or "Upcoming"
     party_venue = session.get("party_venue") or "Party Venue"
 
+    event_name = session.get("event_name") or DEFAULT_EVENT_NAME
+    logo_url = session.get("logo_url") or DEFAULT_LOGO_URL or None
+    banner_url = session.get("banner_url") or DEFAULT_BANNER_URL or None
+    footer_text = session.get("footer_text") or DEFAULT_FOOTER_TEXT
+    theme_color = session.get("theme_color") or DEFAULT_THEME_COLOR
+
     if status == "REGISTRATION":
+        color = resolve_color(theme_color, default=discord.Color.gold())
         embed = discord.Embed(
-            title="⏰ Secret Santa Registration Reminder! 🎅",
+            title=f"⏰ {event_name} Registration Reminder! 🎅",
             description=(
-                "Don't miss out on our private Secret Santa game! "
+                f"Don't miss out on {event_name}! "
                 "Signups are currently open—make sure to join and fill out your wishlist."
             ),
-            color=discord.Color.gold(),
+            color=color,
         )
         embed.add_field(
             name="👥 Currently Registered",
@@ -256,18 +351,27 @@ def build_public_reminder_embed(
         if session.get("signup_deadline"):
             embed.add_field(name="⏳ Sign-up Deadline", value=session["signup_deadline"], inline=True)
         embed.add_field(name="📅 Planned Party Date", value=party_date, inline=True)
-        embed.set_footer(text="Click [Join Event 🎁] on the main registration message to participate!")
+        if logo_url:
+            embed.set_footer(
+                text=f"{footer_text} • Click [Join Event 🎁] on the main registration message to participate!",
+                icon_url=logo_url,
+            )
+        else:
+            embed.set_footer(
+                text=f"{footer_text} • Click [Join Event 🎁] on the main registration message to participate!"
+            )
     else:  # IN_PROGRESS
+        color = resolve_color(theme_color, default=discord.Color.red())
         wrapped = sum(1 for p in participants if p.get("gift_status") in ("WRAPPED", "READY", "AT_PARTY"))
         embed = discord.Embed(
-            title="⏰ Secret Santa Party Countdown & Prep Update! 🎅",
+            title=f"⏰ {event_name} Party Countdown & Prep Update! 🎅",
             description=(
                 f"The countdown is on for our in-person holiday party!\n\n"
                 f"📅 **Party Date:** {party_date}\n"
                 f"📍 **Venue:** {party_venue}\n\n"
                 f"**Preparation Progress:**\n{create_progress_bar(wrapped, total)}"
             ),
-            color=discord.Color.red(),
+            color=color,
         )
         embed.add_field(
             name="📦 Friendly Checklist for Santas",
@@ -279,6 +383,20 @@ def build_public_reminder_embed(
             ),
             inline=False,
         )
+        if logo_url:
+            embed.set_footer(
+                text=f"{footer_text} • Keep your assignments secret until the party!",
+                icon_url=logo_url,
+            )
+        else:
+            embed.set_footer(
+                text=f"{footer_text} • Keep your assignments secret until the party!"
+            )
+
+    if logo_url:
+        embed.set_thumbnail(url=logo_url)
+    if banner_url:
+        embed.set_image(url=banner_url)
 
     if custom_note:
         embed.add_field(name="📢 Message from the Host", value=custom_note, inline=False)
@@ -296,9 +414,12 @@ def build_milestone_reminder_embed(
     total = len(participants)
     deadline_epoch = session.get("signup_deadline_epoch")
     time_display = f"<t:{deadline_epoch}:F>\n⏳ **Draw executes:** <t:{deadline_epoch}:R>" if deadline_epoch else "Soon"
+    event_name = session.get("event_name") or DEFAULT_EVENT_NAME
+    logo_url = session.get("logo_url") or DEFAULT_LOGO_URL or None
+    footer_text = session.get("footer_text") or DEFAULT_FOOTER_TEXT
 
     embed = discord.Embed(
-        title=milestone_title,
+        title=f"{milestone_title} • {event_name}",
         description=(
             "The sign-up deadline is fast approaching! Once the timer expires, "
             "registration will be locked and pairings will be drawn automatically.\n\n"
@@ -307,9 +428,15 @@ def build_milestone_reminder_embed(
         ),
         color=color,
     )
-    embed.set_footer(text="Click [Join Event 🎁] on the registration message above to participate!")
+    if logo_url:
+        embed.set_thumbnail(url=logo_url)
+        embed.set_footer(
+            text=f"{footer_text} • Click [Join Event 🎁] on the registration message above to participate!",
+            icon_url=logo_url,
+        )
+    else:
+        embed.set_footer(text=f"{footer_text} • Click [Join Event 🎁] on the registration message above to participate!")
     return embed
-
 
 
 def build_dm_reminder_embed(
@@ -318,16 +445,28 @@ def build_dm_reminder_embed(
     party_date: Optional[str] = None,
     party_venue: Optional[str] = None,
     custom_note: Optional[str] = None,
+    event_name: Optional[str] = None,
+    logo_url: Optional[str] = None,
+    footer_text: Optional[str] = None,
+    theme_color: Optional[str] = None,
 ) -> discord.Embed:
     """Targeted private reminder DM embed sent to an unwrapped Santa."""
+    name_display = event_name or DEFAULT_EVENT_NAME
+    color = resolve_color(theme_color or DEFAULT_THEME_COLOR, default=discord.Color.gold())
+    resolved_logo = logo_url or DEFAULT_LOGO_URL or None
+    resolved_footer = footer_text or DEFAULT_FOOTER_TEXT
+
     embed = discord.Embed(
-        title="🎅 Secret Santa Check-In: Don't Forget Your Gift! 🎁",
+        title=f"🎅 {name_display} Check-In: Don't Forget Your Gift! 🎁",
         description=(
             f"Friendly reminder that you are the Secret Santa for **{baby_name}**!\n"
             "The in-person party is approaching, so make sure to get your gift ready and wrapped."
         ),
-        color=discord.Color.gold(),
+        color=color,
     )
+
+    if resolved_logo:
+        embed.set_author(name=name_display, icon_url=resolved_logo)
 
     info_lines = [
         f"• **Target Baby:** {baby_name}",
@@ -351,6 +490,10 @@ def build_dm_reminder_embed(
     if custom_note:
         embed.add_field(name="📢 Note from the Host", value=custom_note, inline=False)
 
-    embed.set_footer(text="Use the buttons below to update your status once bought or wrapped!")
+    footer_str = f"{resolved_footer} • Use the buttons below to update your status once bought or wrapped!"
+    if resolved_logo:
+        embed.set_footer(text=footer_str, icon_url=resolved_logo)
+    else:
+        embed.set_footer(text=footer_str)
     return embed
 

@@ -12,10 +12,14 @@ Built with **Python 3.13+**, **`discord.py`**, and **`aiosqlite`**.
 
 - **Digital Coordination, Human Gathering:** Automate everything leading up to the party date so organizers don't have to juggle spreadsheets or draw paper slips. Once everyone arrives at the party with wrapped gifts in hand, the group puts phones away and enjoys the unboxing in person!
 - **UI-First & Modal-Driven Workflow:**
-  - **Interactive Modals:** Clean pop-up forms for setup (`/secretsanta setup`), poll creation (`/secretsanta poll`), deadlines (`/secretsanta set_deadline`), and wishlists.
+  - **Interactive Modals:** Clean pop-up forms for setup (`/secretsanta setup`), branding (`/secretsanta branding`), poll creation (`/secretsanta poll`), deadlines (`/secretsanta set_deadline`), and wishlists.
   - **Native Member Pickers:** Visual `UserSelect` dropdown to select couple/roommate exclusions with zero typing.
-  - **All-in-One Control Panel (`/secretsanta panel`):** Interactive master control board with buttons to manage settings, polls, deadlines, exclusions, reminders, and draws without memorizing commands.
+  - **All-in-One Control Panel (`/secretsanta panel`):** Interactive master control board with buttons to manage settings, branding, polls, deadlines, exclusions, reminders, and draws without memorizing commands.
   - **Interactive Status Dashboard:** `/my_status` includes a 1-click `[Edit Wishlist 📝]` button.
+- **Custom Branding & Theme Engine:**
+  - **Event Customization:** Customize Event Name, Logo/Thumbnail URL, Banner Image URL, Footer Text, and Theme Colors.
+  - **Flexible Color Support:** Named presets (`RED`, `GREEN`, `GOLD`, `BLUE`, `PURPLE`, etc.) or custom hex codes (`#E74C3C`, `#2ECC71`).
+  - **Multi-Level Configuration:** Set global defaults in `.env` and override per-session via `/secretsanta branding` or the Host Control Panel. Embeds in the channel update in-place immediately!
 - **Channel Hub:** Bound to a single dedicated `#secret-santa` channel for announcements, polls, and live countdowns.
 
 - **Vietnam Timezone & Deadlines (`Asia/Ho_Chi_Minh` / UTC+7):**
