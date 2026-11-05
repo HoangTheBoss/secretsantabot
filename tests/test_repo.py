@@ -89,3 +89,29 @@ async def test_pairings_and_relay(temp_repo):
         content="Do you drink coffee?",
     )
     assert msg_id > 0
+
+
+async def test_auto_draw_deadline_repo(temp_repo):
+    # Create session with past deadline (epoch 1000)
+    session_id = await temp_repo.create_session(
+        guild_id=777,
+        channel_id=888,
+        signup_deadline="2026-12-01 20:00",
+        signup_deadline_epoch=1000,
+        auto_draw=True,
+    )
+
+    # Current epoch is 2000 (after deadline)
+    due = await temp_repo.get_due_auto_draw_sessions(current_epoch=2000)
+    assert len(due) == 1
+    assert due[0]["id"] == session_id
+
+    # Current epoch is 500 (before deadline)
+    due_early = await temp_repo.get_due_auto_draw_sessions(current_epoch=500)
+    assert len(due_early) == 0
+
+    # If auto_draw disabled, it should not appear
+    await temp_repo.update_session_details(session_id, auto_draw=False)
+    due_disabled = await temp_repo.get_due_auto_draw_sessions(current_epoch=2000)
+    assert len(due_disabled) == 0
+

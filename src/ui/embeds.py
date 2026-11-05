@@ -41,7 +41,18 @@ def build_registration_embed(
     embed.add_field(name="📅 Party Date", value=party_date, inline=True)
     embed.add_field(name="📍 Party Venue", value=party_venue, inline=True)
 
+    # Deadline field
+    deadline_epoch = session.get("signup_deadline_epoch")
+    if deadline_epoch:
+        deadline_val = f"<t:{deadline_epoch}:F>\n⏳ **Draws:** <t:{deadline_epoch}:R>"
+        if session.get("auto_draw", 1):
+            deadline_val += " *(Auto-draw enabled)*"
+        embed.add_field(name="⏰ Sign-Up Deadline", value=deadline_val, inline=False)
+    elif session.get("signup_deadline"):
+        embed.add_field(name="⏰ Sign-Up Deadline", value=session["signup_deadline"], inline=False)
+
     # Participant roster
+
     count = len(participants)
     if count == 0:
         names_text = "*No participants registered yet. Be the first to join!*"

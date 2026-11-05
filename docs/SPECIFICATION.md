@@ -140,15 +140,17 @@ CREATE TABLE IF NOT EXISTS relay_messages (
 - Ensures neither person can draw the other.
 
 ### 4.4 Matching & Secret DM Dispatch
-- When the host runs `/secretsanta draw`:
-  - Algorithmic derangement runs with backtracking to satisfy all exclusions and prevent self-matching.
-  - Generates a random disguise tag code (e.g., `🎁 CODE: REINDEER-3`) for physical gift tagging.
-  - Each Santa receives a rich DM embed:
-    - Target's Display Name & Avatar.
-    - Wishlist, dislikes, and party notes.
-    - **Physical Packaging Instructions:** *"Write 'To: [Baby Name]' and 'Code: [REINDEER-3]' on the gift wrapping. Do not write your name!"*
-    - **[Ask Baby Anonymously ✉️] Button**.
-    - **[Mark as Bought 🛍️]** and **[Mark as Wrapped 🎁]** Buttons.
+- **Manual Draw:** The host can manually execute the draw anytime using `/secretsanta draw`.
+- **Automatic Draw on Deadline:**
+  - When configuring `/secretsanta setup` or `/secretsanta set_deadline deadline:"3d" auto_draw:True`, the bot monitors the deadline epoch timestamp in a background loop.
+  - As soon as the deadline arrives:
+    1. Verifies $\ge 3$ participants have joined.
+    2. Runs algorithmic derangement with backtracking to satisfy all exclusions.
+    3. Saves pairings to SQLite and advances session state to `IN_PROGRESS`.
+    4. Automatically dispatches private DMs to each Santa with their target's wishlist and secret gift tag code.
+    5. Posts celebratory announcement to `#secret-santa`.
+  - If fewer than 3 participants joined by deadline, the bot posts a friendly warning postponing the draw and keeping registration open.
+
 
 ### 4.5 Anonymous Q&A Relay
 - Santa clicks **[Ask Baby Anonymously ✉️]** in their DM $\to$ opens modal $\to$ submits question.

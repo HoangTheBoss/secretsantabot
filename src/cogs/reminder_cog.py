@@ -5,11 +5,14 @@ from discord import app_commands
 from discord.ext import commands, tasks
 import logging
 from typing import Optional
+from datetime import datetime, timezone
 
 from src.database.repo import SantaRepository
 from src.ui.embeds import build_public_reminder_embed, build_dm_reminder_embed
 from src.ui.views import SantaDmView
+from src.services.draw_service import execute_draw
 from src.config import (
+
     ROUTINE_REMINDERS_ENABLED,
     ROUTINE_REMINDER_HOURS,
     SANTA_ADMIN_ROLE_ID,
@@ -49,9 +52,42 @@ class ReminderCog(commands.Cog):
             self.routine_reminder_loop.change_interval(hours=ROUTINE_REMINDER_HOURS)
             self.routine_reminder_loop.start()
 
+        # Start auto-draw deadline checker
+        self.auto_draw_checker_loop.start()
+
     def cog_unload(self):
         if self.routine_reminder_loop.is_running():
             self.routine_reminder_loop.cancel()
+        if self.auto_draw_checker_loop.is_running():
+            self.auto_draw_checker_loop.cancel()
+
+    @tasks.loop(seconds=30)
+    async def auto_draw_checker_loop(self):
+        """Checks if any active session has reached its signup_deadline for auto-draw."""
+        await self.bot.wait_until_ready()
+        now_epoch = int(datetime.now(timezone.utc).timestamp())
+        due_sessions = await self.repo.get_due_auto_draw_sessions(now_epoch)
+
+        for session in due_sessions:
+            session_id = session["id"]
+            logger.info("Session %s reached signup deadline. Executing auto-draw...", session_id)
+            success, message, failed_dms = await execute_draw(
+                bot=self.bot,
+                repo=self.repo,
+                session_id=session_id,
+                trigger_type="AUTOMATIC",
+            )
+            if not success:
+                channel_id = session.get("channel_id")
+                channel = self.bot.get_channel(channel_id)
+                if channel and isinstance(channel, discord.TextChannel):
+                    await channel.send(
+                        f"⚠️ **Automatic Draw Postponed:** {message}\n"
+                        "Registration will remain open. An admin can use `/secretsanta set_deadline` to set a new deadline or `/secretsanta draw` when ready."
+                    )
+                # Disable auto_draw to prevent re-triggering repeatedly
+                await self.repo.update_session_details(session_id, auto_draw=False)
+
 
     @tasks.loop(hours=24)
     async def routine_reminder_loop(self):

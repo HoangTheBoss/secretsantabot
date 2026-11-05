@@ -8,7 +8,10 @@ from typing import Optional
 
 from src.database.repo import SantaRepository
 from src.services.matcher import generate_pairings, MatchingError
+from src.services.draw_service import execute_draw
+from src.utils.time_parser import parse_deadline, format_discord_timestamp
 from src.ui.embeds import (
+
     build_registration_embed,
     build_santa_dm_embed,
     build_prep_dashboard_embed,
@@ -56,6 +59,8 @@ class AdminCog(commands.Cog):
         budget="Budget ceiling (e.g. $25 - $35)",
         party_date="Party Date & Time (e.g. Dec 24, 19:00)",
         party_venue="Physical location (e.g. Alice's house)",
+        signup_deadline="Sign-up deadline (e.g. '3d', '7 days', '2026-12-10 20:00')",
+        auto_draw="Automatically draw pairs when the sign-up deadline arrives",
     )
     async def setup_event(
         self,
@@ -63,11 +68,22 @@ class AdminCog(commands.Cog):
         budget: Optional[str] = None,
         party_date: Optional[str] = None,
         party_venue: Optional[str] = None,
+        signup_deadline: Optional[str] = None,
+        auto_draw: bool = True,
     ):
         guild_id = interaction.guild_id
         channel_id = interaction.channel_id
         if not guild_id or not channel_id:
             return
+
+        deadline_str = None
+        deadline_epoch = None
+        if signup_deadline:
+            try:
+                _, deadline_epoch, deadline_str = parse_deadline(signup_deadline)
+            except ValueError as e:
+                await interaction.response.send_message(f"⚠️ {e}", ephemeral=True)
+                return
 
         # Check existing active session
         existing = await self.repo.get_active_session(guild_id)
@@ -78,6 +94,9 @@ class AdminCog(commands.Cog):
                 budget=budget,
                 party_date=party_date,
                 party_venue=party_venue,
+                signup_deadline=deadline_str,
+                signup_deadline_epoch=deadline_epoch,
+                auto_draw=auto_draw,
             )
         else:
             session_id = await self.repo.create_session(
@@ -86,6 +105,9 @@ class AdminCog(commands.Cog):
                 budget=budget,
                 party_date=party_date,
                 party_venue=party_venue,
+                signup_deadline=deadline_str,
+                signup_deadline_epoch=deadline_epoch,
+                auto_draw=auto_draw,
             )
 
         session = await self.repo.get_session_by_id(session_id)
@@ -98,6 +120,7 @@ class AdminCog(commands.Cog):
         self.bot.add_view(view)
 
         await interaction.response.send_message(embed=embed, view=view)
+
 
     @group.command(name="poll", description="Post an interactive voting poll in the channel.")
     @is_admin()
@@ -161,6 +184,53 @@ class AdminCog(commands.Cog):
             f"• Venue: `{party_venue or session.get('party_venue', 'Unset')}`",
             ephemeral=True,
         )
+
+    @group.command(name="set_deadline", description="Set or change the sign-up deadline and automatic draw schedule.")
+    @is_admin()
+    @app_commands.describe(
+        deadline="Deadline string (e.g. '3d', '7 days', '2026-12-10 20:00')",
+        auto_draw="Automatically execute the draw when the deadline arrives",
+    )
+    async def set_deadline(
+        self,
+        interaction: discord.Interaction,
+        deadline: str,
+        auto_draw: bool = True,
+    ):
+        session = await self.repo.get_active_session(interaction.guild_id)
+        if not session:
+            await interaction.response.send_message("❌ No active Secret Santa session found.", ephemeral=True)
+            return
+
+        if session.get("status") != "REGISTRATION":
+            await interaction.response.send_message("⚠️ Sign-ups are already closed for this event.", ephemeral=True)
+            return
+
+        try:
+            _, epoch, formatted = parse_deadline(deadline)
+        except ValueError as e:
+            await interaction.response.send_message(f"⚠️ {e}", ephemeral=True)
+            return
+
+        await self.repo.update_session_details(
+            session_id=session["id"],
+            signup_deadline=formatted,
+            signup_deadline_epoch=epoch,
+            auto_draw=auto_draw,
+        )
+
+        auto_note = (
+            "• **Auto-Draw:** Enabled 🤖 (pairs will be drawn automatically on time!)"
+            if auto_draw
+            else "• **Auto-Draw:** Disabled (manual `/secretsanta draw` required)"
+        )
+        await interaction.response.send_message(
+            f"✅ **Sign-up deadline updated!**\n"
+            f"• **Deadline:** {format_discord_timestamp(epoch)}\n"
+            f"{auto_note}",
+            ephemeral=True,
+        )
+
 
     @group.command(name="exclude", description="Prevent two participants from drawing each other (e.g. couples).")
     @is_admin()
@@ -256,78 +326,27 @@ class AdminCog(commands.Cog):
 
         session_id = session["id"]
         participants = await self.repo.get_all_participants(session_id)
-        user_ids = [p["user_id"] for p in participants]
-
-        if len(user_ids) < 3:
+        if len(participants) < 3:
             await interaction.response.send_message(
-                f"⚠️ Need at least 3 participants to draw pairs (currently have {len(user_ids)}).",
+                f"⚠️ Need at least 3 participants to draw pairs (currently have {len(participants)}).",
                 ephemeral=True,
             )
             return
 
-        exclusions = await self.repo.get_exclusions(session_id)
-
         await interaction.response.defer(thinking=True, ephemeral=False)
 
-        try:
-            pairings = generate_pairings(user_ids, exclusions=exclusions)
-        except MatchingError as e:
-            await interaction.followup.send(
-                f"❌ **Matching Failed:** {e}\nTry removing some exclusion rules and try again."
-            )
-            return
-
-        # Save to database
-        await self.repo.save_pairings(session_id, pairings)
-        await self.repo.update_session_status(session_id, "IN_PROGRESS")
-
-        # Map participant details for DM dispatch
-        part_map = {p["user_id"]: p for p in participants}
-
-        # Dispatch DMs to all Santas
-        client = interaction.client
-        failed_dms: list[str] = []
-
-        for santa_id, baby_id, gift_tag_code in pairings:
-            santa_part = part_map.get(santa_id)
-            baby_part = part_map.get(baby_id)
-            if not santa_part or not baby_part:
-                continue
-
-            try:
-                santa_user = await client.fetch_user(santa_id)
-                baby_user = await client.fetch_user(baby_id)
-
-                avatar_url = baby_user.display_avatar.url if baby_user else None
-
-                embed = build_santa_dm_embed(
-                    baby_name=baby_part["display_name"],
-                    baby_username=baby_part["username"],
-                    avatar_url=avatar_url,
-                    wishlist=baby_part["wishlist"],
-                    dislikes=baby_part["dislikes"],
-                    offline_notes=baby_part["offline_notes"],
-                    gift_tag_code=gift_tag_code,
-                    budget=session.get("budget"),
-                    party_date=session.get("party_date"),
-                    party_venue=session.get("party_venue"),
-                )
-                view = SantaDmView(repo=self.repo, session_id=session_id, baby_id=baby_id)
-                await santa_user.send(embed=embed, view=view)
-            except Exception as e:
-                logger.error("Failed to send assignment DM to %s: %s", santa_id, e)
-                failed_dms.append(santa_part["display_name"])
-
-        success_msg = (
-            "🎉 **The Secret Santa Draw is Complete!** 🎅\n\n"
-            f"• **{len(pairings)} Santas** have been assigned their secret targets!\n"
-            "• Each participant has been sent their assignment and physical gift tag code in private DM.\n"
-            "• Get shopping, wrap your gifts, and we'll see everyone at the party! 🥂"
+        success, message, failed_dms = await execute_draw(
+            bot=self.bot,
+            repo=self.repo,
+            session_id=session_id,
+            trigger_type="MANUAL",
         )
-        if failed_dms:
-            success_msg += f"\n\n⚠️ **Note:** Could not deliver DMs to: {', '.join(failed_dms)}. Please check their privacy settings."
 
-        await interaction.followup.send(success_msg)
+        if not success:
+            await interaction.followup.send(f"❌ {message}")
+        else:
+            await interaction.followup.send("🎉 **Draw completed and dispatched!** Pairings sent via DM.")
+
 
     @group.command(name="dashboard", description="Display the spoiler-free gift preparation progress meter.")
     async def show_dashboard(self, interaction: discord.Interaction):

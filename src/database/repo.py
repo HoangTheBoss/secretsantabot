@@ -41,15 +41,30 @@ class SantaRepository:
         budget: Optional[str] = None,
         party_date: Optional[str] = None,
         party_venue: Optional[str] = None,
+        signup_deadline: Optional[str] = None,
+        signup_deadline_epoch: Optional[int] = None,
+        auto_draw: bool = True,
     ) -> int:
         """Create a new game session in REGISTRATION state."""
         async with get_connection(self.db_path) as db:
             cursor = await db.execute(
                 """
-                INSERT INTO game_sessions (guild_id, channel_id, status, budget, party_date, party_venue)
-                VALUES (?, ?, 'REGISTRATION', ?, ?, ?)
+                INSERT INTO game_sessions (
+                    guild_id, channel_id, status, budget, party_date,
+                    party_venue, signup_deadline, signup_deadline_epoch, auto_draw
+                )
+                VALUES (?, ?, 'REGISTRATION', ?, ?, ?, ?, ?, ?)
                 """,
-                (guild_id, channel_id, budget, party_date, party_venue),
+                (
+                    guild_id,
+                    channel_id,
+                    budget,
+                    party_date,
+                    party_venue,
+                    signup_deadline,
+                    signup_deadline_epoch,
+                    1 if auto_draw else 0,
+                ),
             )
             await db.commit()
             return cursor.lastrowid
@@ -70,6 +85,8 @@ class SantaRepository:
         party_date: Optional[str] = None,
         party_venue: Optional[str] = None,
         signup_deadline: Optional[str] = None,
+        signup_deadline_epoch: Optional[int] = None,
+        auto_draw: Optional[bool] = None,
     ) -> None:
         """Update event details."""
         updates: list[str] = []
@@ -87,6 +104,12 @@ class SantaRepository:
         if signup_deadline is not None:
             updates.append("signup_deadline = ?")
             params.append(signup_deadline)
+        if signup_deadline_epoch is not None:
+            updates.append("signup_deadline_epoch = ?")
+            params.append(signup_deadline_epoch)
+        if auto_draw is not None:
+            updates.append("auto_draw = ?")
+            params.append(1 if auto_draw else 0)
 
         if not updates:
             return
@@ -96,6 +119,7 @@ class SantaRepository:
         async with get_connection(self.db_path) as db:
             await db.execute(query, tuple(params))
             await db.commit()
+
 
     async def add_or_update_participant(
         self,
@@ -376,4 +400,22 @@ class SantaRepository:
                 (session_id,),
             )
             await db.commit()
+
+    async def get_due_auto_draw_sessions(self, current_epoch: int) -> list[dict[str, Any]]:
+        """Fetch all sessions where registration is open and signup_deadline has passed for auto-draw."""
+        async with get_connection(self.db_path) as db:
+            async with db.execute(
+                """
+                SELECT * FROM game_sessions
+                WHERE status = 'REGISTRATION'
+                  AND auto_draw = 1
+                  AND signup_deadline_epoch IS NOT NULL
+                  AND signup_deadline_epoch <= ?
+                ORDER BY id ASC
+                """,
+                (current_epoch,),
+            ) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(r) for r in rows]
+
 

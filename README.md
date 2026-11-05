@@ -12,7 +12,12 @@ Built with **Python 3.13+**, **`discord.py`**, and **`aiosqlite`**.
 
 - **Digital Coordination, Human Gathering:** Automate everything leading up to the party date so organizers don't have to juggle spreadsheets or draw paper slips. Once everyone arrives at the party with wrapped gifts in hand, the group puts phones away and enjoys the unboxing in person!
 - **Channel Hub:** Bound to a single dedicated `#secret-santa` channel for announcements, polls, and live countdowns.
+- **Deadlines & Automatic Draw on Time:**
+  - Set relative deadlines (e.g., `3d`, `7 days`, `24h`) or absolute dates (`2026-12-10 20:00`, `Dec 15`).
+  - Discord dynamic timestamp integration (`<t:TIMESTAMP:F>` and `<t:TIMESTAMP:R>`) displays deadlines in each user's local timezone.
+  - Background scheduler automatically executes the draw, saves pairs, and dispatches secret DMs the instant the deadline arrives!
 - **Strict DM Secrecy:** Pairs, wishlists, and gift tag instructions are delivered strictly via private DMs.
+
 - **Routine Updates & Reminders:**
   - **Public Channel Updates:** Scheduled periodic countdown & prep dashboard updates in `#secret-santa`.
   - **Private DM Nudges:** Targeted reminder DMs sent only to Santas who haven't marked their gift as wrapped, complete with action buttons (`[Mark as Wrapped 🎁]`, `[Ask Baby Anonymously ✉️]`).

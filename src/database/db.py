@@ -21,9 +21,12 @@ CREATE TABLE IF NOT EXISTS game_sessions (
     party_date TEXT,
     party_venue TEXT,
     signup_deadline TEXT,
+    signup_deadline_epoch INTEGER,
+    auto_draw BOOLEAN DEFAULT 1,
     last_reminded_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
 
 CREATE TABLE IF NOT EXISTS participants (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -96,9 +99,20 @@ async def init_db(db_path: str = DATABASE_PATH) -> None:
             pass  # Already exists
 
         try:
+            await db.execute("ALTER TABLE game_sessions ADD COLUMN signup_deadline_epoch INTEGER;")
+        except Exception:
+            pass  # Already exists
+
+        try:
+            await db.execute("ALTER TABLE game_sessions ADD COLUMN auto_draw BOOLEAN DEFAULT 1;")
+        except Exception:
+            pass  # Already exists
+
+        try:
             await db.execute("ALTER TABLE pairings ADD COLUMN last_reminded_at TIMESTAMP;")
         except Exception:
             pass  # Already exists
+
 
         await db.commit()
     logger.info("Database schema initialized successfully.")
