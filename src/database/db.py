@@ -25,11 +25,6 @@ CREATE TABLE IF NOT EXISTS game_sessions (
     auto_draw BOOLEAN DEFAULT 1,
     triggered_milestones TEXT DEFAULT '',
     registration_message_id INTEGER,
-    event_name TEXT DEFAULT 'Buda Secret Santa',
-    logo_url TEXT,
-    banner_url TEXT,
-    footer_text TEXT,
-    theme_color TEXT,
     last_reminded_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -129,18 +124,6 @@ async def init_db(db_path: str = DATABASE_PATH) -> None:
             await db.execute("ALTER TABLE game_sessions ADD COLUMN registration_message_id INTEGER;")
         except Exception:
             pass  # Already exists
-
-        for col, col_type in [
-            ("event_name", "TEXT DEFAULT 'Buda Secret Santa'"),
-            ("logo_url", "TEXT"),
-            ("banner_url", "TEXT"),
-            ("footer_text", "TEXT"),
-            ("theme_color", "TEXT"),
-        ]:
-            try:
-                await db.execute(f"ALTER TABLE game_sessions ADD COLUMN {col} {col_type};")
-            except Exception:
-                pass  # Already exists
 
         try:
             await db.execute("ALTER TABLE pairings ADD COLUMN triggered_milestones TEXT DEFAULT '';")

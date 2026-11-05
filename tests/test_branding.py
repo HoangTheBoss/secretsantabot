@@ -1,9 +1,9 @@
-"""Unit tests for event branding and appearance customization."""
+"""Unit tests for config-driven branding, reverse proxy hostname, and built-in asset server."""
 
 import pytest
 import discord
-from src.database.db import init_db
-from src.database.repo import SantaRepository
+import aiohttp
+from pathlib import Path
 from src.ui.embeds import (
     resolve_color,
     build_registration_embed,
@@ -13,14 +13,13 @@ from src.ui.embeds import (
     build_milestone_reminder_embed,
     build_dm_reminder_embed,
 )
-from src.ui.modals import BrandingModal
-
-
-@pytest.fixture
-async def temp_repo(tmp_path):
-    db_file = str(tmp_path / "test_branding.db")
-    await init_db(db_file)
-    return SantaRepository(db_file)
+from src.config import (
+    get_base_url,
+    resolve_asset_url,
+    EVENT_NAME,
+    FOOTER_TEXT,
+)
+from src.services.asset_server import AssetServer
 
 
 def test_resolve_color():
@@ -34,68 +33,76 @@ def test_resolve_color():
     assert resolve_color(None, default=discord.Color.purple()) == discord.Color.purple()
 
 
-async def test_repo_branding_lifecycle(temp_repo):
-    session_id = await temp_repo.create_session(guild_id=1001, channel_id=2001)
-    session = await temp_repo.get_session_by_id(session_id)
-    assert session is not None
-    assert session.get("event_name") == "Buda Secret Santa"
+def test_hostname_and_asset_url_resolution(monkeypatch):
+    # 1. Custom PUBLIC_URL
+    monkeypatch.setattr("src.config.PUBLIC_URL", "https://santa.myparty.org/")
+    monkeypatch.setattr("src.config.PUBLIC_HOSTNAME", "")
+    assert get_base_url() == "https://santa.myparty.org"
+    assert resolve_asset_url("logo.png") == "https://santa.myparty.org/assets/logo.png"
 
-    # Update branding details
-    await temp_repo.update_session_details(
-        session_id=session_id,
-        event_name="Buda Winter Wonderland 2026",
-        logo_url="https://example.com/logo.png",
-        banner_url="https://example.com/banner.png",
-        footer_text="Buda Winter Gala • Ho Ho Ho!",
-        theme_color="#1ABC9C",
+    # 2. Reverse proxy hostname without protocol (should default to https)
+    monkeypatch.setattr("src.config.PUBLIC_URL", "")
+    monkeypatch.setattr("src.config.PUBLIC_HOSTNAME", "secretsanta.internal.net")
+    assert get_base_url() == "https://secretsanta.internal.net"
+    assert resolve_asset_url("/banner.png") == "https://secretsanta.internal.net/assets/banner.png"
+
+    # 3. Direct external URL should be preserved untouched
+    external = "https://cdn.discordapp.com/attachments/123/456/party.png"
+    assert resolve_asset_url(external) == external
+
+    # 4. Fallback to localhost
+    monkeypatch.setattr("src.config.PUBLIC_URL", "")
+    monkeypatch.setattr("src.config.PUBLIC_HOSTNAME", "")
+    monkeypatch.setattr("src.config.HTTP_PORT", 9090)
+    assert get_base_url() == "http://localhost:9090"
+    assert resolve_asset_url("tree.png") == "http://localhost:9090/assets/tree.png"
+
+
+async def test_asset_server_lifecycle_and_static_serving(tmp_path):
+    # Create test assets
+    test_assets = tmp_path / "assets"
+    test_assets.mkdir()
+    (test_assets / "test_logo.png").write_bytes(b"\x89PNG\r\n\x1a\nfakeimage")
+
+    server = AssetServer(
+        host="127.0.0.1",
+        port=8912,
+        assets_dir=test_assets,
+        event_name="Test Santa",
+        public_url="http://127.0.0.1:8912",
     )
 
-    updated = await temp_repo.get_session_by_id(session_id)
-    assert updated["event_name"] == "Buda Winter Wonderland 2026"
-    assert updated["logo_url"] == "https://example.com/logo.png"
-    assert updated["banner_url"] == "https://example.com/banner.png"
-    assert updated["footer_text"] == "Buda Winter Gala • Ho Ho Ho!"
-    assert updated["theme_color"] == "#1ABC9C"
+    await server.start()
 
-    # Clear branding fields back to NULL
-    await temp_repo.update_session_details(
-        session_id=session_id,
-        event_name=None,
-        logo_url=None,
-        banner_url=None,
-        footer_text=None,
-        theme_color=None,
-    )
-    cleared = await temp_repo.get_session_by_id(session_id)
-    assert cleared["event_name"] is None
-    assert cleared["logo_url"] is None
-    assert cleared["banner_url"] is None
-    assert cleared["footer_text"] is None
-    assert cleared["theme_color"] is None
+    try:
+        async with aiohttp.ClientSession() as session:
+            # 1. Health check
+            async with session.get("http://127.0.0.1:8912/health") as resp:
+                assert resp.status == 200
+                data = await resp.json()
+                assert data["status"] == "ok"
+                assert data["event_name"] == "Test Santa"
 
+            # 2. Index info
+            async with session.get("http://127.0.0.1:8912/") as resp:
+                assert resp.status == 200
+                data = await resp.json()
+                assert data["status"] == "online"
 
-async def test_branding_modal_init(temp_repo):
-    session_id = await temp_repo.create_session(guild_id=1001, channel_id=2001)
-    await temp_repo.update_session_details(
-        session_id=session_id,
-        event_name="Corporate Holiday Bash",
-        logo_url="https://img.com/logo.png",
-        banner_url="https://img.com/banner.png",
-        footer_text="Custom Footer 2026",
-        theme_color="GOLD",
-    )
-    session = await temp_repo.get_session_by_id(session_id)
-    modal = BrandingModal(repo=temp_repo, session=session)
+            # 3. Static asset serving
+            async with session.get("http://127.0.0.1:8912/assets/test_logo.png") as resp:
+                assert resp.status == 200
+                content = await resp.read()
+                assert content == b"\x89PNG\r\n\x1a\nfakeimage"
 
-    assert len(modal.children) == 5
-    assert modal.event_name_input.default == "Corporate Holiday Bash"
-    assert modal.logo_url_input.default == "https://img.com/logo.png"
-    assert modal.banner_url_input.default == "https://img.com/banner.png"
-    assert modal.footer_text_input.default == "Custom Footer 2026"
-    assert modal.theme_color_input.default == "GOLD"
+            # 4. 404 for nonexistent asset
+            async with session.get("http://127.0.0.1:8912/assets/missing.png") as resp:
+                assert resp.status == 404
+    finally:
+        await server.stop()
 
 
-def test_embeds_with_branding():
+def test_embeds_with_config_branding():
     session = {
         "id": 1,
         "guild_id": 100,
@@ -104,21 +111,13 @@ def test_embeds_with_branding():
         "budget": "$30",
         "party_date": "Dec 25",
         "party_venue": "Sky Lounge",
-        "event_name": "Custom Gala 2026",
-        "logo_url": "https://example.com/icon.png",
-        "banner_url": "https://example.com/banner.png",
-        "footer_text": "Custom Gala Rules",
-        "theme_color": "#E67E22",
     }
     participants = [{"display_name": "Alice", "username": "alice", "gift_status": "NOT_STARTED"}]
 
     # 1. Registration embed
     reg_embed = build_registration_embed(session, participants)
-    assert "Custom Gala 2026" in reg_embed.title
-    assert reg_embed.thumbnail.url == "https://example.com/icon.png"
-    assert reg_embed.image.url == "https://example.com/banner.png"
-    assert "Custom Gala Rules" in reg_embed.footer.text
-    assert reg_embed.color == discord.Color(0xE67E22)
+    assert EVENT_NAME in reg_embed.title
+    assert FOOTER_TEXT in reg_embed.footer.text
 
     # 2. Santa DM embed
     dm_embed = build_santa_dm_embed(
@@ -132,40 +131,27 @@ def test_embeds_with_branding():
         budget=session["budget"],
         party_date=session["party_date"],
         party_venue=session["party_venue"],
-        event_name=session["event_name"],
-        logo_url=session["logo_url"],
-        footer_text=session["footer_text"],
-        theme_color=session["theme_color"],
     )
-    assert "Custom Gala 2026" in dm_embed.title
-    assert dm_embed.author.name == "Custom Gala 2026"
-    assert dm_embed.author.icon_url == "https://example.com/icon.png"
-    assert "Custom Gala Rules" in dm_embed.footer.text
-    assert dm_embed.color == discord.Color(0xE67E22)
+    assert EVENT_NAME in dm_embed.title
+    assert dm_embed.author.name == EVENT_NAME
+    assert FOOTER_TEXT in dm_embed.footer.text
 
     # 3. Preparation Dashboard embed
     prep_embed = build_prep_dashboard_embed(session, participants)
-    assert "Custom Gala 2026" in prep_embed.title
-    assert prep_embed.thumbnail.url == "https://example.com/icon.png"
-    assert prep_embed.image.url == "https://example.com/banner.png"
-    assert "Custom Gala Rules" in prep_embed.footer.text
-    assert prep_embed.color == discord.Color(0xE67E22)
+    assert EVENT_NAME in prep_embed.title
+    assert FOOTER_TEXT in prep_embed.footer.text
 
     # 4. Public Reminder embed (REGISTRATION)
     pub_embed = build_public_reminder_embed(session, participants)
-    assert "Custom Gala 2026" in pub_embed.title
-    assert pub_embed.thumbnail.url == "https://example.com/icon.png"
-    assert pub_embed.image.url == "https://example.com/banner.png"
-    assert "Custom Gala Rules" in pub_embed.footer.text
-    assert pub_embed.color == discord.Color(0xE67E22)
+    assert EVENT_NAME in pub_embed.title
+    assert FOOTER_TEXT in pub_embed.footer.text
 
     # 5. Milestone Reminder embed
     milestone_embed = build_milestone_reminder_embed(
         session, participants, "⚠️ 24 Hours Left!", discord.Color.orange()
     )
-    assert "Custom Gala 2026" in milestone_embed.title
-    assert milestone_embed.thumbnail.url == "https://example.com/icon.png"
-    assert "Custom Gala Rules" in milestone_embed.footer.text
+    assert EVENT_NAME in milestone_embed.title
+    assert FOOTER_TEXT in milestone_embed.footer.text
 
     # 6. Targeted DM Reminder embed
     dm_remind_embed = build_dm_reminder_embed(
@@ -173,13 +159,7 @@ def test_embeds_with_branding():
         gift_tag_code="POLAR-1",
         party_date=session["party_date"],
         party_venue=session["party_venue"],
-        event_name=session["event_name"],
-        logo_url=session["logo_url"],
-        footer_text=session["footer_text"],
-        theme_color=session["theme_color"],
     )
-    assert "Custom Gala 2026" in dm_remind_embed.title
-    assert dm_remind_embed.author.name == "Custom Gala 2026"
-    assert dm_remind_embed.author.icon_url == "https://example.com/icon.png"
-    assert "Custom Gala Rules" in dm_remind_embed.footer.text
-    assert dm_remind_embed.color == discord.Color(0xE67E22)
+    assert EVENT_NAME in dm_remind_embed.title
+    assert dm_remind_embed.author.name == EVENT_NAME
+    assert FOOTER_TEXT in dm_remind_embed.footer.text

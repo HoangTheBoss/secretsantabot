@@ -5,12 +5,23 @@ from discord.ext import commands
 import logging
 from typing import Optional
 
-from src.config import GUILD_ID, DATABASE_PATH, LOG_LEVEL
+from src.config import (
+    GUILD_ID,
+    DATABASE_PATH,
+    LOG_LEVEL,
+    HTTP_SERVER_ENABLED,
+    HTTP_HOST,
+    HTTP_PORT,
+    ASSETS_DIR,
+    EVENT_NAME,
+    get_base_url,
+)
 from src.database.db import init_db
 from src.database.repo import SantaRepository
 from src.cogs.admin_cog import AdminCog
 from src.cogs.user_cog import UserCog
 from src.cogs.reminder_cog import ReminderCog
+from src.services.asset_server import AssetServer
 from src.ui.views import RegistrationView
 
 
@@ -29,10 +40,22 @@ class SecretSantaBot(commands.Bot):
             help_command=None,
         )
         self.repo = SantaRepository(DATABASE_PATH)
+        self.asset_server: Optional[AssetServer] = None
 
     async def setup_hook(self):
         """Called once during bot startup before connecting to Discord Gateway."""
         logger.info("Running setup_hook...")
+
+        # Start built-in asset server for hosting branding assets
+        if HTTP_SERVER_ENABLED:
+            self.asset_server = AssetServer(
+                host=HTTP_HOST,
+                port=HTTP_PORT,
+                assets_dir=ASSETS_DIR,
+                event_name=EVENT_NAME,
+                public_url=get_base_url(),
+            )
+            await self.asset_server.start()
 
         # Initialize SQLite schema
         await init_db(DATABASE_PATH)
@@ -65,6 +88,12 @@ class SecretSantaBot(commands.Bot):
         logger.info("🎅 Buda Secret Santa Bot is logged in as: %s (ID: %s)", self.user, self.user.id if self.user else "Unknown")
         logger.info("Connected to %d guild(s)", len(self.guilds))
         logger.info("=" * 50)
+
+    async def close(self):
+        """Clean up background services before closing the bot client."""
+        if self.asset_server:
+            await self.asset_server.stop()
+        await super().close()
 
 
 def create_bot() -> SecretSantaBot:

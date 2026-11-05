@@ -55,13 +55,63 @@ try:
 except ValueError:
     ROUTINE_REMINDER_HOURS = 24
 
-# Default Branding & Appearance
-DEFAULT_EVENT_NAME = os.getenv("DEFAULT_EVENT_NAME", "Buda Secret Santa")
-DEFAULT_LOGO_URL = os.getenv("DEFAULT_LOGO_URL", "")
-DEFAULT_BANNER_URL = os.getenv("DEFAULT_BANNER_URL", "")
-DEFAULT_FOOTER_TEXT = os.getenv("DEFAULT_FOOTER_TEXT", "Buda Secret Santa • Happy Holidays! 🎄")
-DEFAULT_THEME_COLOR = os.getenv("DEFAULT_THEME_COLOR", "RED")
+# Assets Directory
+ASSETS_DIR = BASE_DIR / "assets"
+ASSETS_DIR.mkdir(parents=True, exist_ok=True)
+
+# Branding & Appearance (Environment / Config-driven)
+EVENT_NAME = os.getenv("EVENT_NAME", os.getenv("DEFAULT_EVENT_NAME", "Buda Secret Santa"))
+THEME_COLOR = os.getenv("THEME_COLOR", os.getenv("DEFAULT_THEME_COLOR", "RED"))
+FOOTER_TEXT = os.getenv("FOOTER_TEXT", os.getenv("DEFAULT_FOOTER_TEXT", "Buda Secret Santa • Happy Holidays! 🎄"))
+LOGO_FILENAME = os.getenv("LOGO_FILENAME", "logo.png")
+BANNER_FILENAME = os.getenv("BANNER_FILENAME", "banner.png")
+
+# Built-in HTTP Asset Server & Reverse Proxy Configuration
+HTTP_SERVER_ENABLED = os.getenv("HTTP_SERVER_ENABLED", "true").lower() in ("true", "1", "yes")
+HTTP_HOST = os.getenv("HTTP_HOST", "0.0.0.0")
+try:
+    HTTP_PORT = int(os.getenv("HTTP_PORT", "8080"))
+except ValueError:
+    HTTP_PORT = 8080
+
+PUBLIC_HOSTNAME = os.getenv("PUBLIC_HOSTNAME", "").strip()
+PUBLIC_URL = os.getenv("PUBLIC_URL", "").strip()
+
+
+def get_base_url() -> str:
+    """Resolve the public base URL for static assets (supporting reverse proxy hostnames)."""
+    if PUBLIC_URL:
+        return PUBLIC_URL.rstrip("/")
+    if PUBLIC_HOSTNAME:
+        host = PUBLIC_HOSTNAME
+        if not host.startswith(("http://", "https://")):
+            return f"https://{host}".rstrip("/")
+        return host.rstrip("/")
+    return f"http://localhost:{HTTP_PORT}"
+
+
+def resolve_asset_url(filename_or_url: str | None) -> str | None:
+    """Resolve asset filename to a full public URL, or keep external URLs as is."""
+    if not filename_or_url or not filename_or_url.strip():
+        return None
+    val = filename_or_url.strip()
+    if val.startswith(("http://", "https://")):
+        return val
+    clean_name = val.lstrip("/")
+    return f"{get_base_url()}/assets/{clean_name}"
+
+
+def get_logo_url() -> str | None:
+    """Return public URL for the event logo."""
+    return resolve_asset_url(LOGO_FILENAME)
+
+
+def get_banner_url() -> str | None:
+    """Return public URL for the event banner."""
+    return resolve_asset_url(BANNER_FILENAME)
+
 
 # Logging
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+
 

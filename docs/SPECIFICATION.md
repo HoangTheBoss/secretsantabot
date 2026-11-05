@@ -63,11 +63,6 @@ CREATE TABLE IF NOT EXISTS game_sessions (
     auto_draw BOOLEAN DEFAULT 1,
     triggered_milestones TEXT DEFAULT '',
     registration_message_id INTEGER,
-    event_name TEXT DEFAULT 'Buda Secret Santa',
-    logo_url TEXT,
-    banner_url TEXT,
-    footer_text TEXT,
-    theme_color TEXT,
     last_reminded_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -152,7 +147,6 @@ CREATE TABLE IF NOT EXISTS relay_messages (
 ### 4.4 All-in-One Host Control Panel (`/secretsanta panel`)
 - Host can run `/secretsanta panel` to open a unified interactive dashboard featuring:
   - `[ ⚙️ Settings ]`: Opens `SetupModal`
-  - `[ 🎨 Branding ]`: Opens `BrandingModal`
   - `[ 📊 Create Poll ]`: Opens `CreatePollModal`
   - `[ ⏰ Set Deadline ]`: Opens `DeadlineModal`
   - `[ 🚫 Exclusions ]`: Opens `ExclusionManageView`
@@ -160,15 +154,19 @@ CREATE TABLE IF NOT EXISTS relay_messages (
   - `[ 🔒 Master Sheet ]`: Displays secret cheat sheet
   - `[ 🎲 Draw Pairs ]`: Manually executes the draw
 
-### 4.5 Custom Branding & Appearance Engine
-- Configurable via `/secretsanta branding` slash command or the `[ 🎨 Branding ]` panel button:
-  - **Event Name:** Replaces default titles across public cards and private DMs (e.g. `Buda Secret Santa 2026`).
-  - **Theme Color:** Supports named color constants (`RED`, `GREEN`, `GOLD`, `BLUE`, `PURPLE`, etc.) or custom hex values (`#E74C3C`).
-  - **Logo / Thumbnail URL:** Appears as thumbnail on registration & progress cards and author icon on Santa assignment DMs.
-  - **Banner Image URL:** Displays high-resolution banner image across registration and progress cards.
-  - **Footer Text & Icon:** Custom signature text and logo shown on embeds.
-- Updates immediately refresh the channel's registration message in-place without reposting or spamming chat.
-- Defaults configurable via environment variables (`DEFAULT_EVENT_NAME`, `DEFAULT_LOGO_URL`, `DEFAULT_BANNER_URL`, `DEFAULT_FOOTER_TEXT`, `DEFAULT_THEME_COLOR`).
+### 4.5 Config & ENV Branding with Built-in Asset Server
+- Since the bot is designed for private server usage, branding is decoupled from SQLite sessions and configured cleanly via environment variables / configuration:
+  - **`EVENT_NAME`:** Custom name displayed in public embeds, countdowns, and private DMs (default: `Buda Secret Santa`).
+  - **`THEME_COLOR`:** Named presets (`RED`, `GREEN`, `GOLD`, `BLUE`, etc.) or Hex codes (`#E74C3C`).
+  - **`FOOTER_TEXT`:** Signature text rendered on embed footers.
+  - **`LOGO_FILENAME` / `BANNER_FILENAME`:** Filenames of static images stored in the `assets/` directory.
+- **Built-in Asset HTTP Server (`aiohttp.web`):**
+  - Serves static assets at `/assets/<filename>` alongside the Discord gateway connection.
+  - Automatically started during `setup_hook()` and gracefully stopped during `close()`.
+  - Includes a `/health` endpoint for reverse proxy uptime checks.
+- **Reverse Proxy Hostname Resolution:**
+  - Configure `PUBLIC_HOSTNAME` (e.g. `santa.myorg.com`) or `PUBLIC_URL` (e.g. `https://santa.myorg.com`).
+  - When rendering Discord embeds, image URLs automatically resolve to the public reverse proxy URL so Discord clients can fetch and display them.
 
 ### 4.6 Matching & Secret DM Dispatch
 - **Manual Draw:** The host can manually execute the draw anytime using `/secretsanta draw`.

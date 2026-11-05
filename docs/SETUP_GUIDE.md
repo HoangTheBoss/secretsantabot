@@ -88,12 +88,37 @@ DATABASE_PATH=data/secretsanta.db
 # Logging Level (DEBUG, INFO, WARNING, ERROR)
 LOG_LEVEL=INFO
 
-# Branding & Appearance Defaults (Optional)
-DEFAULT_EVENT_NAME=Buda Secret Santa
-DEFAULT_LOGO_URL=https://example.com/logo.png
-DEFAULT_BANNER_URL=https://example.com/banner.png
-DEFAULT_FOOTER_TEXT=Buda Secret Santa • Ho Ho Ho!
-DEFAULT_THEME_COLOR=RED
+# Branding & Appearance (Optional)
+EVENT_NAME=Buda Secret Santa 2026
+THEME_COLOR=RED
+FOOTER_TEXT=Buda Secret Santa • Ho Ho Ho! 🎄
+LOGO_FILENAME=logo.png
+BANNER_FILENAME=banner.png
+
+# Built-in Asset Server & Reverse Proxy
+HTTP_SERVER_ENABLED=true
+HTTP_HOST=0.0.0.0
+HTTP_PORT=8080
+PUBLIC_HOSTNAME=santa.yourdomain.com
+PUBLIC_URL=https://santa.yourdomain.com
+```
+
+### Reverse Proxy Example (Nginx)
+
+When deploying behind Nginx or Caddy with TLS:
+
+```nginx
+server {
+    server_name santa.yourdomain.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
 ```
 
 ---

@@ -3,11 +3,11 @@
 import discord
 from typing import Any, Optional
 from src.config import (
-    DEFAULT_EVENT_NAME,
-    DEFAULT_LOGO_URL,
-    DEFAULT_BANNER_URL,
-    DEFAULT_FOOTER_TEXT,
-    DEFAULT_THEME_COLOR,
+    EVENT_NAME,
+    THEME_COLOR,
+    FOOTER_TEXT,
+    get_logo_url,
+    get_banner_url,
 )
 
 
@@ -64,9 +64,9 @@ def build_registration_embed(
     party_date = session.get("party_date") or "To be announced"
     party_venue = session.get("party_venue") or "To be announced"
 
-    event_name = session.get("event_name") or DEFAULT_EVENT_NAME
+    event_name = EVENT_NAME
     default_c = discord.Color.green() if status == "REGISTRATION" else discord.Color.gold()
-    color = resolve_color(session.get("theme_color") or DEFAULT_THEME_COLOR, default=default_c)
+    color = resolve_color(THEME_COLOR, default=default_c)
 
     embed = discord.Embed(
         title=f"🎄 {event_name} 🎅",
@@ -79,9 +79,9 @@ def build_registration_embed(
         color=color,
     )
 
-    logo_url = session.get("logo_url") or DEFAULT_LOGO_URL or None
-    banner_url = session.get("banner_url") or DEFAULT_BANNER_URL or None
-    footer_text = session.get("footer_text") or DEFAULT_FOOTER_TEXT
+    logo_url = get_logo_url()
+    banner_url = get_banner_url()
+    footer_text = FOOTER_TEXT
 
     if logo_url:
         embed.set_thumbnail(url=logo_url)
@@ -139,16 +139,12 @@ def build_santa_dm_embed(
     budget: Optional[str] = None,
     party_date: Optional[str] = None,
     party_venue: Optional[str] = None,
-    event_name: Optional[str] = None,
-    logo_url: Optional[str] = None,
-    footer_text: Optional[str] = None,
-    theme_color: Optional[str] = None,
 ) -> discord.Embed:
     """Secret DM embed sent to Santa."""
-    name_display = event_name or DEFAULT_EVENT_NAME
-    color = resolve_color(theme_color or DEFAULT_THEME_COLOR, default=discord.Color.red())
-    resolved_logo = logo_url or DEFAULT_LOGO_URL or None
-    resolved_footer = footer_text or DEFAULT_FOOTER_TEXT
+    name_display = EVENT_NAME
+    color = resolve_color(THEME_COLOR, default=discord.Color.red())
+    resolved_logo = get_logo_url()
+    resolved_footer = FOOTER_TEXT
 
     embed = discord.Embed(
         title=f"🎅 Shh! Your {name_display} Assignment is Here!",
@@ -221,11 +217,11 @@ def build_prep_dashboard_embed(
     party_date = session.get("party_date") or "Upcoming"
     party_venue = session.get("party_venue") or "Party Venue"
 
-    event_name = session.get("event_name") or DEFAULT_EVENT_NAME
-    color = resolve_color(session.get("theme_color") or DEFAULT_THEME_COLOR, default=discord.Color.blurple())
-    logo_url = session.get("logo_url") or DEFAULT_LOGO_URL or None
-    banner_url = session.get("banner_url") or DEFAULT_BANNER_URL or None
-    footer_text = session.get("footer_text") or DEFAULT_FOOTER_TEXT
+    event_name = EVENT_NAME
+    color = resolve_color(THEME_COLOR, default=discord.Color.blurple())
+    logo_url = get_logo_url()
+    banner_url = get_banner_url()
+    footer_text = FOOTER_TEXT
 
     embed = discord.Embed(
         title=f"🎁 {event_name} Preparation Dashboard",
@@ -327,11 +323,11 @@ def build_public_reminder_embed(
     party_date = session.get("party_date") or "Upcoming"
     party_venue = session.get("party_venue") or "Party Venue"
 
-    event_name = session.get("event_name") or DEFAULT_EVENT_NAME
-    logo_url = session.get("logo_url") or DEFAULT_LOGO_URL or None
-    banner_url = session.get("banner_url") or DEFAULT_BANNER_URL or None
-    footer_text = session.get("footer_text") or DEFAULT_FOOTER_TEXT
-    theme_color = session.get("theme_color") or DEFAULT_THEME_COLOR
+    event_name = EVENT_NAME
+    logo_url = get_logo_url()
+    banner_url = get_banner_url()
+    footer_text = FOOTER_TEXT
+    theme_color = THEME_COLOR
 
     if status == "REGISTRATION":
         color = resolve_color(theme_color, default=discord.Color.gold())
@@ -414,9 +410,9 @@ def build_milestone_reminder_embed(
     total = len(participants)
     deadline_epoch = session.get("signup_deadline_epoch")
     time_display = f"<t:{deadline_epoch}:F>\n⏳ **Draw executes:** <t:{deadline_epoch}:R>" if deadline_epoch else "Soon"
-    event_name = session.get("event_name") or DEFAULT_EVENT_NAME
-    logo_url = session.get("logo_url") or DEFAULT_LOGO_URL or None
-    footer_text = session.get("footer_text") or DEFAULT_FOOTER_TEXT
+    event_name = EVENT_NAME
+    logo_url = get_logo_url()
+    footer_text = FOOTER_TEXT
 
     embed = discord.Embed(
         title=f"{milestone_title} • {event_name}",
@@ -445,16 +441,12 @@ def build_dm_reminder_embed(
     party_date: Optional[str] = None,
     party_venue: Optional[str] = None,
     custom_note: Optional[str] = None,
-    event_name: Optional[str] = None,
-    logo_url: Optional[str] = None,
-    footer_text: Optional[str] = None,
-    theme_color: Optional[str] = None,
 ) -> discord.Embed:
     """Targeted private reminder DM embed sent to an unwrapped Santa."""
-    name_display = event_name or DEFAULT_EVENT_NAME
-    color = resolve_color(theme_color or DEFAULT_THEME_COLOR, default=discord.Color.gold())
-    resolved_logo = logo_url or DEFAULT_LOGO_URL or None
-    resolved_footer = footer_text or DEFAULT_FOOTER_TEXT
+    name_display = EVENT_NAME
+    color = resolve_color(THEME_COLOR, default=discord.Color.gold())
+    resolved_logo = get_logo_url()
+    resolved_footer = FOOTER_TEXT
 
     embed = discord.Embed(
         title=f"🎅 {name_display} Check-In: Don't Forget Your Gift! 🎁",

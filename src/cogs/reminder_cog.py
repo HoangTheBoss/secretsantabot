@@ -189,10 +189,6 @@ class ReminderCog(commands.Cog):
                         gift_tag_code=p["gift_tag_code"],
                         party_date=session.get("party_date"),
                         party_venue=session.get("party_venue"),
-                        event_name=session.get("event_name"),
-                        logo_url=session.get("logo_url"),
-                        footer_text=session.get("footer_text"),
-                        theme_color=session.get("theme_color"),
                     )
                     view = SantaDmView(repo=self.repo, session_id=session_id, baby_id=p["baby_id"])
                     await santa_user.send(embed=dm_embed, view=view)
@@ -280,10 +276,6 @@ class ReminderCog(commands.Cog):
                     party_date=session.get("party_date"),
                     party_venue=session.get("party_venue"),
                     custom_note=custom_note,
-                    event_name=session.get("event_name"),
-                    logo_url=session.get("logo_url"),
-                    footer_text=session.get("footer_text"),
-                    theme_color=session.get("theme_color"),
                 )
                 view = SantaDmView(repo=self.repo, session_id=session_id, baby_id=p["baby_id"])
                 await santa_user.send(embed=dm_embed, view=view)
@@ -330,10 +322,6 @@ class ReminderCog(commands.Cog):
                 party_date=session.get("party_date"),
                 party_venue=session.get("party_venue"),
                 custom_note=custom_note,
-                event_name=session.get("event_name"),
-                logo_url=session.get("logo_url"),
-                footer_text=session.get("footer_text"),
-                theme_color=session.get("theme_color"),
             )
             view = SantaDmView(repo=self.repo, session_id=session["id"], baby_id=pairing["baby_id"])
             await member.send(embed=dm_embed, view=view)

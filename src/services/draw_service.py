@@ -72,10 +72,6 @@ async def execute_draw(
                 budget=session.get("budget"),
                 party_date=session.get("party_date"),
                 party_venue=session.get("party_venue"),
-                event_name=session.get("event_name"),
-                logo_url=session.get("logo_url"),
-                footer_text=session.get("footer_text"),
-                theme_color=session.get("theme_color"),
             )
             view = SantaDmView(repo=repo, session_id=session_id, baby_id=baby_id)
             await santa_user.send(embed=embed, view=view)
