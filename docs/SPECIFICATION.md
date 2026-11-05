@@ -171,11 +171,21 @@ CREATE TABLE IF NOT EXISTS relay_messages (
 - No names are spoiled publicly.
 
 ### 4.7 Routine Updates & Reminders System
-- **Background Task (`discord.ext.tasks`):** Runs every 24 hours (configurable via `ROUTINE_REMINDER_HOURS`).
-- **Channel Broadcasts:**
-  - *Registration Phase:* Sign-up reminder, deadline countdown, and current participant count.
-  - *In-Progress Phase:* Party countdown, venue reminder, and preparation progress bar.
-- **Smart DM Nudges:**
+- **Timezone Standard:** Defaults to **Vietnam Time (`Asia/Ho_Chi_Minh` / ICT / UTC+7)**. All date strings (e.g. `Dec 15 20:00`) are parsed relative to GMT+7, with Discord dynamic tags `<t:EPOCH:F>` displaying the equivalent in every user's local device time.
+- **Background Task (`discord.ext.tasks`):**
+  - Runs routine reminder loops and checks auto-draw/milestones every 30 seconds.
+- **Escalating Reminders Toward Sign-Up Deadline:**
+  - Automated public reminders trigger at escalating intervals:
+    - **72 Hours (3 Days):** Initial notice of closing registration.
+    - **48 Hours (2 Days):** Mid-week alert with current participant count.
+    - **24 Hours (1 Day):** 24-hour warning that draw executes tomorrow.
+    - **12 Hours:** Half-day countdown.
+    - **6 Hours:** Afternoon notice.
+    - **2 Hours:** Urgent alert.
+    - **1 Hour:** Final 60-minute call before pairs are locked and drawn.
+  - Each milestone triggers at most once via database milestone tracking (`triggered_milestones`).
+- **Smart DM Nudges for Santas:**
+
   - Automatically queries Santas whose gifts are still `NOT_STARTED` or `BOUGHT` (ignoring Santas who already wrapped).
   - Delivers a private DM embed reminding them of their target's name, physical gift tag code, and interactive buttons to mark as wrapped or ask questions.
 - **On-Demand Admin Commands:**

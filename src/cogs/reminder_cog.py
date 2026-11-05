@@ -8,7 +8,12 @@ from typing import Optional
 from datetime import datetime, timezone
 
 from src.database.repo import SantaRepository
-from src.ui.embeds import build_public_reminder_embed, build_dm_reminder_embed
+from src.ui.embeds import (
+    build_public_reminder_embed,
+    build_dm_reminder_embed,
+    build_milestone_reminder_embed,
+)
+
 from src.ui.views import SantaDmView
 from src.services.draw_service import execute_draw
 from src.config import (
@@ -21,7 +26,19 @@ from src.config import (
 logger = logging.getLogger("secretsanta.reminder_cog")
 
 
+DEADLINE_MILESTONES = [
+    ("72h", 72 * 3600, "⏰ 3 Days Left to Sign Up for Secret Santa!", discord.Color.blue()),
+    ("48h", 48 * 3600, "⏰ 48 Hours Remaining: Secret Santa Signups Closing Soon!", discord.Color.gold()),
+    ("24h", 24 * 3600, "🚨 Final 24 Hours! Automatic Draw Takes Place Tomorrow!", discord.Color.orange()),
+    ("12h", 12 * 3600, "⚡ 12 Hours Left! Don't Miss Out on Secret Santa!", discord.Color.orange()),
+    ("6h", 6 * 3600, "🔥 6 Hours Remaining: Registration Closing Today!", discord.Color.red()),
+    ("2h", 2 * 3600, "🚨 Urgent: 2 Hours Left! Last Call Before the Draw!", discord.Color.red()),
+    ("1h", 1 * 3600, "⚡ Last Chance: 1 Hour Remaining Until the Secret Draw!", discord.Color.dark_red()),
+]
+
+
 def is_admin():
+
     """Admin check matching admin_cog."""
     async def predicate(interaction: discord.Interaction) -> bool:
         if not interaction.guild:
@@ -63,11 +80,12 @@ class ReminderCog(commands.Cog):
 
     @tasks.loop(seconds=30)
     async def auto_draw_checker_loop(self):
-        """Checks if any active session has reached its signup_deadline for auto-draw."""
+        """Checks if any active session has reached its signup_deadline for auto-draw or escalating reminders."""
         await self.bot.wait_until_ready()
         now_epoch = int(datetime.now(timezone.utc).timestamp())
-        due_sessions = await self.repo.get_due_auto_draw_sessions(now_epoch)
 
+        # 1. Check for due auto-draw sessions
+        due_sessions = await self.repo.get_due_auto_draw_sessions(now_epoch)
         for session in due_sessions:
             session_id = session["id"]
             logger.info("Session %s reached signup deadline. Executing auto-draw...", session_id)
@@ -87,6 +105,43 @@ class ReminderCog(commands.Cog):
                     )
                 # Disable auto_draw to prevent re-triggering repeatedly
                 await self.repo.update_session_details(session_id, auto_draw=False)
+
+        # 2. Check for escalating countdown reminders before deadline
+        active_sessions = await self.repo.get_all_active_sessions()
+        for session in active_sessions:
+            if session.get("status") != "REGISTRATION":
+                continue
+
+            deadline_epoch = session.get("signup_deadline_epoch")
+            if not deadline_epoch:
+                continue
+
+            time_left = deadline_epoch - now_epoch
+            if time_left <= 0:
+                continue  # Handled above
+
+            triggered = set(session.get("triggered_milestones", "").split(",")) if session.get("triggered_milestones") else set()
+
+            for key, threshold_sec, title, color in DEADLINE_MILESTONES:
+                if time_left <= threshold_sec and key not in triggered:
+                    channel_id = session.get("channel_id")
+                    channel = self.bot.get_channel(channel_id)
+                    if not channel:
+                        try:
+                            channel = await self.bot.fetch_channel(channel_id)
+                        except Exception:
+                            channel = None
+
+                    if channel and isinstance(channel, discord.TextChannel):
+                        participants = await self.repo.get_all_participants(session["id"])
+                        embed = build_milestone_reminder_embed(session, participants, title, color)
+                        await channel.send(embed=embed)
+                        logger.info("Sent escalating milestone reminder (%s) to #%s", key, channel.name)
+
+                    await self.repo.add_session_milestone(session["id"], key)
+                    triggered.add(key)
+                    break
+
 
 
     @tasks.loop(hours=24)

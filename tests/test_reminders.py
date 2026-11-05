@@ -3,7 +3,12 @@
 import pytest
 from src.database.db import init_db
 from src.database.repo import SantaRepository
-from src.ui.embeds import build_public_reminder_embed, build_dm_reminder_embed
+from src.ui.embeds import (
+    build_public_reminder_embed,
+    build_dm_reminder_embed,
+    build_milestone_reminder_embed,
+)
+
 
 
 @pytest.fixture
@@ -79,3 +84,35 @@ def test_dm_reminder_embed():
     assert "Bob" in embed.description
     assert "POLAR-99" in str(embed.fields)
     assert "Wrap tightly!" in str(embed.fields)
+
+
+async def test_milestone_tracking_and_embed(temp_repo):
+    import discord
+
+    session_id = await temp_repo.create_session(
+        guild_id=123,
+        channel_id=456,
+        signup_deadline="2026-12-10 20:00 ICT",
+        signup_deadline_epoch=1765371600,
+    )
+
+    # Add milestone '24h'
+    await temp_repo.add_session_milestone(session_id, "24h")
+    session = await temp_repo.get_session_by_id(session_id)
+    assert "24h" in session["triggered_milestones"]
+
+    # Add milestone '2h'
+    await temp_repo.add_session_milestone(session_id, "2h")
+    session2 = await temp_repo.get_session_by_id(session_id)
+    assert "24h" in session2["triggered_milestones"]
+    assert "2h" in session2["triggered_milestones"]
+
+    embed = build_milestone_reminder_embed(
+        session=session2,
+        participants=[{"display_name": "Alice"}],
+        milestone_title="🚨 Urgent: 2 Hours Left!",
+        color=discord.Color.red(),
+    )
+    assert "Urgent: 2 Hours Left!" in embed.title
+    assert "1765371600" in embed.description
+

@@ -418,4 +418,45 @@ class SantaRepository:
                 rows = await cursor.fetchall()
                 return [dict(r) for r in rows]
 
+    async def add_session_milestone(self, session_id: int, milestone: str) -> None:
+        """Record a triggered milestone for a game session (e.g. '72h', '24h', '2h')."""
+        async with get_connection(self.db_path) as db:
+            async with db.execute(
+                "SELECT triggered_milestones FROM game_sessions WHERE id = ?",
+                (session_id,),
+            ) as cursor:
+                row = await cursor.fetchone()
+                existing = row[0] if row and row[0] else ""
+                milestones = set(existing.split(",")) if existing else set()
+                milestones.add(milestone)
+                new_str = ",".join(sorted(milestones))
+                await db.execute(
+                    "UPDATE game_sessions SET triggered_milestones = ? WHERE id = ?",
+                    (new_str, session_id),
+                )
+                await db.commit()
+
+    async def add_pairing_milestone(self, session_id: int, santa_id: int, milestone: str) -> None:
+        """Record a triggered milestone for an individual pairing."""
+        async with get_connection(self.db_path) as db:
+            async with db.execute(
+                "SELECT triggered_milestones FROM pairings WHERE session_id = ? AND santa_id = ?",
+                (session_id, santa_id),
+            ) as cursor:
+                row = await cursor.fetchone()
+                existing = row[0] if row and row[0] else ""
+                milestones = set(existing.split(",")) if existing else set()
+                milestones.add(milestone)
+                new_str = ",".join(sorted(milestones))
+                await db.execute(
+                    """
+                    UPDATE pairings
+                    SET triggered_milestones = ?, last_reminded_at = CURRENT_TIMESTAMP
+                    WHERE session_id = ? AND santa_id = ?
+                    """,
+                    (new_str, session_id, santa_id),
+                )
+                await db.commit()
+
+
 

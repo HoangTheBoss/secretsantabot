@@ -1,20 +1,22 @@
-"""Parser for date, time, and relative duration strings into epoch timestamps."""
+"""Parser for date, time, and relative duration strings into epoch timestamps (defaulting to Vietnam Time ICT / UTC+7)."""
 
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from src.config import DEFAULT_TIMEZONE
 
 
 def parse_deadline(input_str: str) -> tuple[datetime, int, str]:
     """
-    Parse a deadline string (relative or absolute) into UTC datetime, epoch seconds, and display string.
+    Parse a deadline string (relative or absolute) into timezone-aware datetime,
+    epoch seconds, and human-readable string in Vietnam Time (ICT / UTC+7).
 
     Supports:
       - Relative: "3d", "7 days", "24h", "12 hours", "30m", "45 minutes"
       - Absolute: "YYYY-MM-DD HH:MM", "YYYY-MM-DD", "Dec 15 20:00", "Dec 15", "December 20, 2026 19:00"
 
     Returns:
-        (target_datetime_utc, epoch_timestamp_int, human_readable_string)
+        (target_datetime, epoch_timestamp_int, human_readable_string)
 
     Raises:
         ValueError: If input string cannot be parsed.
@@ -23,7 +25,7 @@ def parse_deadline(input_str: str) -> tuple[datetime, int, str]:
     if not raw:
         raise ValueError("Deadline string cannot be empty.")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(DEFAULT_TIMEZONE)
 
     # 1. Check relative format: e.g. "3d", "5 days", "12h", "30m"
     rel_match = re.fullmatch(
@@ -43,7 +45,7 @@ def parse_deadline(input_str: str) -> tuple[datetime, int, str]:
 
         target_dt = now + delta
         epoch = int(target_dt.timestamp())
-        formatted = target_dt.strftime("%Y-%m-%d %H:%M UTC")
+        formatted = target_dt.strftime("%Y-%m-%d %H:%M ICT")
         return target_dt, epoch, formatted
 
     # 2. Check standard absolute formats
@@ -62,9 +64,9 @@ def parse_deadline(input_str: str) -> tuple[datetime, int, str]:
             parsed = datetime.strptime(raw, fmt)
             if is_date_only:
                 parsed = parsed.replace(hour=23, minute=59, second=59)
-            target_dt = parsed.replace(tzinfo=timezone.utc)
+            target_dt = parsed.replace(tzinfo=DEFAULT_TIMEZONE)
             epoch = int(target_dt.timestamp())
-            formatted = target_dt.strftime("%Y-%m-%d %H:%M UTC")
+            formatted = target_dt.strftime("%Y-%m-%d %H:%M ICT")
             return target_dt, epoch, formatted
         except ValueError:
             continue
@@ -81,23 +83,26 @@ def parse_deadline(input_str: str) -> tuple[datetime, int, str]:
         try:
             raw_with_year = f"{raw} {now.year}"
             parsed = datetime.strptime(raw_with_year, full_fmt)
-            if parsed.replace(tzinfo=timezone.utc) < now:
+            # If already passed in current year, advance to next year
+            target_dt_temp = parsed.replace(tzinfo=DEFAULT_TIMEZONE)
+            if target_dt_temp < now:
                 parsed = parsed.replace(year=now.year + 1)
             if is_date_only:
                 parsed = parsed.replace(hour=23, minute=59, second=59)
-            target_dt = parsed.replace(tzinfo=timezone.utc)
+            target_dt = parsed.replace(tzinfo=DEFAULT_TIMEZONE)
             epoch = int(target_dt.timestamp())
-            formatted = target_dt.strftime("%Y-%m-%d %H:%M UTC")
+            formatted = target_dt.strftime("%Y-%m-%d %H:%M ICT")
             return target_dt, epoch, formatted
         except ValueError:
             continue
 
     raise ValueError(
         f"Could not parse deadline '{input_str}'.\n"
-        "Supported formats:\n"
+        "Supported formats (interpreted in Vietnam Time / ICT):\n"
         "• Relative: '3d', '7 days', '24h', '30m'\n"
         "• Absolute: '2026-12-10 20:00', '2026-12-10', 'Dec 15 20:00', 'Dec 15'"
     )
+
 
 
 def format_discord_timestamp(epoch: int) -> str:

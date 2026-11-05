@@ -286,6 +286,32 @@ def build_public_reminder_embed(
     return embed
 
 
+def build_milestone_reminder_embed(
+    session: dict[str, Any],
+    participants: list[dict[str, Any]],
+    milestone_title: str,
+    color: discord.Color,
+) -> discord.Embed:
+    """Escalating reminder embed sent to the channel as the signup deadline approaches."""
+    total = len(participants)
+    deadline_epoch = session.get("signup_deadline_epoch")
+    time_display = f"<t:{deadline_epoch}:F>\n⏳ **Draw executes:** <t:{deadline_epoch}:R>" if deadline_epoch else "Soon"
+
+    embed = discord.Embed(
+        title=milestone_title,
+        description=(
+            "The sign-up deadline is fast approaching! Once the timer expires, "
+            "registration will be locked and pairings will be drawn automatically.\n\n"
+            f"⏰ **Deadline:** {time_display}\n"
+            f"👥 **Confirmed Santas:** **{total} participants**"
+        ),
+        color=color,
+    )
+    embed.set_footer(text="Click [Join Event 🎁] on the registration message above to participate!")
+    return embed
+
+
+
 def build_dm_reminder_embed(
     baby_name: str,
     gift_tag_code: str,

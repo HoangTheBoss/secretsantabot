@@ -23,9 +23,11 @@ CREATE TABLE IF NOT EXISTS game_sessions (
     signup_deadline TEXT,
     signup_deadline_epoch INTEGER,
     auto_draw BOOLEAN DEFAULT 1,
+    triggered_milestones TEXT DEFAULT '',
     last_reminded_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
 
 
 CREATE TABLE IF NOT EXISTS participants (
@@ -51,8 +53,10 @@ CREATE TABLE IF NOT EXISTS pairings (
     gift_tag_code TEXT NOT NULL,
     assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     gift_status TEXT DEFAULT 'NOT_STARTED',
+    triggered_milestones TEXT DEFAULT '',
     last_reminded_at TIMESTAMP,
     FOREIGN KEY (session_id) REFERENCES game_sessions(id) ON DELETE CASCADE,
+
     UNIQUE (session_id, santa_id),
     UNIQUE (session_id, baby_id)
 );
@@ -109,9 +113,20 @@ async def init_db(db_path: str = DATABASE_PATH) -> None:
             pass  # Already exists
 
         try:
+            await db.execute("ALTER TABLE game_sessions ADD COLUMN triggered_milestones TEXT DEFAULT '';")
+        except Exception:
+            pass  # Already exists
+
+        try:
+            await db.execute("ALTER TABLE pairings ADD COLUMN triggered_milestones TEXT DEFAULT '';")
+        except Exception:
+            pass  # Already exists
+
+        try:
             await db.execute("ALTER TABLE pairings ADD COLUMN last_reminded_at TIMESTAMP;")
         except Exception:
             pass  # Already exists
+
 
 
         await db.commit()

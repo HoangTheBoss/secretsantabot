@@ -11,7 +11,7 @@ def test_relative_days():
     # 3 days = 3 * 86400 = 259200 seconds
     diff = epoch - now_epoch
     assert 259100 <= diff <= 259300
-    assert "UTC" in formatted
+    assert "ICT" in formatted
 
 
 def test_relative_hours():
@@ -19,6 +19,17 @@ def test_relative_hours():
     now_epoch = int(datetime.now(timezone.utc).timestamp())
     diff = epoch - now_epoch
     assert 43100 <= diff <= 43300
+    assert "ICT" in formatted
+
+
+def test_vietnam_timezone_conversion():
+    dt, epoch, formatted = parse_deadline("2026-12-25 18:00")
+    assert "ICT" in formatted
+    # 18:00 in UTC+7 is 11:00 in UTC
+    utc_dt = dt.astimezone(timezone.utc)
+    assert utc_dt.hour == 11
+    assert utc_dt.day == 25
+
 
 
 def test_relative_minutes():

@@ -12,11 +12,14 @@ Built with **Python 3.13+**, **`discord.py`**, and **`aiosqlite`**.
 
 - **Digital Coordination, Human Gathering:** Automate everything leading up to the party date so organizers don't have to juggle spreadsheets or draw paper slips. Once everyone arrives at the party with wrapped gifts in hand, the group puts phones away and enjoys the unboxing in person!
 - **Channel Hub:** Bound to a single dedicated `#secret-santa` channel for announcements, polls, and live countdowns.
-- **Deadlines & Automatic Draw on Time:**
-  - Set relative deadlines (e.g., `3d`, `7 days`, `24h`) or absolute dates (`2026-12-10 20:00`, `Dec 15`).
-  - Discord dynamic timestamp integration (`<t:TIMESTAMP:F>` and `<t:TIMESTAMP:R>`) displays deadlines in each user's local timezone.
+- **Vietnam Timezone & Deadlines (`Asia/Ho_Chi_Minh` / UTC+7):**
+  - All naive dates and times default automatically to Vietnam Time (ICT / GMT+7).
+  - Relative deadlines (e.g., `3d`, `7 days`, `24h`) and absolute dates (`2026-12-10 20:00`, `Dec 15`) are converted to epoch timestamps with Discord dynamic timezone tags (`<t:TIMESTAMP:F>` and `<t:TIMESTAMP:R>`).
+- **Escalating Reminders Toward Deadline:**
+  - Automated alerts escalate in frequency as the deadline approaches: **3 days $\to$ 48 hours $\to$ 24 hours $\to$ 12 hours $\to$ 6 hours $\to$ 2 hours $\to$ final 1 hour call!**
   - Background scheduler automatically executes the draw, saves pairs, and dispatches secret DMs the instant the deadline arrives!
 - **Strict DM Secrecy:** Pairs, wishlists, and gift tag instructions are delivered strictly via private DMs.
+
 
 - **Routine Updates & Reminders:**
   - **Public Channel Updates:** Scheduled periodic countdown & prep dashboard updates in `#secret-santa`.
