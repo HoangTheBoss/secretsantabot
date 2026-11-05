@@ -6,9 +6,13 @@ from src.database.db import get_connection
 from src.config import DATABASE_PATH
 
 
+UNSET = object()
+
+
 class SantaRepository:
     def __init__(self, db_path: str = DATABASE_PATH):
         self.db_path = db_path
+
 
     async def get_active_session(self, guild_id: int) -> Optional[dict[str, Any]]:
         """Fetch the current non-completed game session for this guild."""
@@ -81,37 +85,37 @@ class SantaRepository:
     async def update_session_details(
         self,
         session_id: int,
-        budget: Optional[str] = None,
-        party_date: Optional[str] = None,
-        party_venue: Optional[str] = None,
-        signup_deadline: Optional[str] = None,
-        signup_deadline_epoch: Optional[int] = None,
-        auto_draw: Optional[bool] = None,
-        registration_message_id: Optional[int] = None,
+        budget: Any = UNSET,
+        party_date: Any = UNSET,
+        party_venue: Any = UNSET,
+        signup_deadline: Any = UNSET,
+        signup_deadline_epoch: Any = UNSET,
+        auto_draw: Any = UNSET,
+        registration_message_id: Any = UNSET,
     ) -> None:
         """Update event details."""
         updates: list[str] = []
         params: list[Any] = []
 
-        if budget is not None:
+        if budget is not UNSET:
             updates.append("budget = ?")
             params.append(budget)
-        if party_date is not None:
+        if party_date is not UNSET:
             updates.append("party_date = ?")
             params.append(party_date)
-        if party_venue is not None:
+        if party_venue is not UNSET:
             updates.append("party_venue = ?")
             params.append(party_venue)
-        if signup_deadline is not None:
+        if signup_deadline is not UNSET:
             updates.append("signup_deadline = ?")
             params.append(signup_deadline)
-        if signup_deadline_epoch is not None:
+        if signup_deadline_epoch is not UNSET:
             updates.append("signup_deadline_epoch = ?")
             params.append(signup_deadline_epoch)
-        if auto_draw is not None:
+        if auto_draw is not UNSET:
             updates.append("auto_draw = ?")
             params.append(1 if auto_draw else 0)
-        if registration_message_id is not None:
+        if registration_message_id is not UNSET:
             updates.append("registration_message_id = ?")
             params.append(registration_message_id)
 
@@ -123,6 +127,7 @@ class SantaRepository:
         async with get_connection(self.db_path) as db:
             await db.execute(query, tuple(params))
             await db.commit()
+
 
     async def update_registration_message_id(self, session_id: int, message_id: int) -> None:
         """Record the Discord message ID of the channel registration embed."""

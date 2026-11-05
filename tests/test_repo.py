@@ -120,8 +120,21 @@ async def test_auto_draw_deadline_repo(temp_repo):
     updated = await temp_repo.get_session_by_id(session_id)
     assert updated["registration_message_id"] == 987654321
 
+    # Test clearing fields via update_session_details
+    await temp_repo.update_session_details(
+        session_id,
+        signup_deadline=None,
+        signup_deadline_epoch=None,
+        auto_draw=False,
+    )
+    cleared = await temp_repo.get_session_by_id(session_id)
+    assert cleared["signup_deadline"] is None
+    assert cleared["signup_deadline_epoch"] is None
+    assert cleared["auto_draw"] == 0
+
     await temp_repo.archive_or_cancel_session(session_id, status="CANCELLED")
     cancelled = await temp_repo.get_active_session(777)
     assert cancelled is None
+
 
 
