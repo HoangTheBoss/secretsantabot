@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger("secretsanta.modals")
 
 
-class WishlistModal(discord.ui.Modal, title="Secret Santa: Wishlist & Notes"):
+class WishlistModal(discord.ui.Modal, title="Secret Santa Wishlist"):
     def __init__(
         self,
         repo: "SantaRepository",
@@ -28,7 +28,7 @@ class WishlistModal(discord.ui.Modal, title="Secret Santa: Wishlist & Notes"):
         self.wishlist_input = discord.ui.TextInput(
             label="🎁 Wishlist & Interests",
             style=discord.TextStyle.paragraph,
-            placeholder="Links, favorite hobbies, authors, games, clothing sizes...",
+            placeholder="• Hobbies, games, books, sizes\n• Favorite stores or links\n(Use multiple lines for each item)",
             default=existing_wishlist,
             required=True,
             max_length=1000,
@@ -38,7 +38,7 @@ class WishlistModal(discord.ui.Modal, title="Secret Santa: Wishlist & Notes"):
         self.dislikes_input = discord.ui.TextInput(
             label="🚫 Dislikes & Allergies",
             style=discord.TextStyle.paragraph,
-            placeholder="Allergies, things you don't like, items you already own...",
+            placeholder="• Food or scent allergies\n• Items you already own\n• Colors/styles to avoid...",
             default=existing_dislikes,
             required=False,
             max_length=500,
@@ -46,9 +46,9 @@ class WishlistModal(discord.ui.Modal, title="Secret Santa: Wishlist & Notes"):
         self.add_item(self.dislikes_input)
 
         self.offline_notes_input = discord.ui.TextInput(
-            label="🥂 In-Person Party & Drink Notes",
+            label="🥂 Party Drink & Food Notes",
             style=discord.TextStyle.paragraph,
-            placeholder="Favorite beer/wine/cocktail, dietary restrictions, arrival notes...",
+            placeholder="• Beer, wine, cocktail, or mocktail\n• Dietary preferences\n• Arrival or party notes...",
             default=existing_notes,
             required=False,
             max_length=500,
@@ -66,7 +66,7 @@ class WishlistModal(discord.ui.Modal, title="Secret Santa: Wishlist & Notes"):
         dm_verified = True
         try:
             await user.send(
-                "🎄 **Hi there!** This confirms you are registered for Secret Santa! "
+                "🎄 **Hi there!** This confirms you are registered for Secret Santa!\n\n"
                 "We will deliver your secret target assignment here once the draw takes place."
             )
         except discord.Forbidden:
@@ -88,17 +88,20 @@ class WishlistModal(discord.ui.Modal, title="Secret Santa: Wishlist & Notes"):
 
         if dm_verified:
             resp_msg = (
-                "✅ **Your Secret Santa wishlist and preferences have been saved!**\n"
-                "You are officially registered for the event. A confirmation message was sent to your DMs."
+                "✅ **Wishlist & Preferences Saved!**\n\n"
+                "You are officially registered for Secret Santa! A confirmation note was sent to your DMs.\n\n"
+                "• **Status:** Active Participant 🎁\n"
+                "• **Next Step:** Watch for the secret pairing draw announcement!"
             )
         else:
             resp_msg = (
-                "⚠️ **Your preferences were saved, BUT your DMs are closed!**\n"
+                "⚠️ **Preferences Saved, BUT Your DMs Are Closed!**\n\n"
                 "The bot cannot deliver your secret target assignment because your Discord Privacy Settings block DMs from server members.\n\n"
-                "**How to fix:**\n"
-                "1. Right-click this server icon (or tap server name on mobile).\n"
-                "2. Go to **Privacy Settings**.\n"
-                "3. Enable **'Allow direct messages from server members'**."
+                "📱 **Quick Fix for Mobile Discord (iOS / Android):**\n"
+                "1. Tap the server name at the top of the channel list.\n"
+                "2. Tap **Privacy Settings** (or the gear icon ⚙️).\n"
+                "3. Turn ON **Allow Direct Messages**.\n"
+                "4. Once enabled, tap **[Update Wishlist 📝]** anytime to re-verify!"
             )
 
         await interaction.followup.send(resp_msg, ephemeral=True)
@@ -118,8 +121,10 @@ class AnonymousMessageModal(discord.ui.Modal):
         session_id: int,
         target_user_id: int,
         direction: str,  # 'SANTA_TO_BABY' or 'BABY_TO_SANTA'
-        title: str = "Send Anonymous Message",
+        title: Optional[str] = None,
     ):
+        if not title:
+            title = "Ask Baby Anonymously" if direction == "SANTA_TO_BABY" else "Reply to Secret Santa"
         super().__init__(title=title)
         self.repo = repo
         self.session_id = session_id
@@ -127,9 +132,9 @@ class AnonymousMessageModal(discord.ui.Modal):
         self.direction = direction
 
         self.message_input = discord.ui.TextInput(
-            label="Your Message (Delivered Anonymously)",
+            label="Message (Delivered Anonymously)",
             style=discord.TextStyle.paragraph,
-            placeholder="Type your question or reply here...",
+            placeholder="Type your message or question here...\n\nThe recipient will NOT see your identity.",
             required=True,
             max_length=1500,
         )
@@ -170,18 +175,20 @@ class AnonymousMessageModal(discord.ui.Modal):
 
             await target_user.send(embed=embed, view=view)
             await interaction.response.send_message(
-                "📨 **Your anonymous message has been safely delivered!**",
+                "📨 **Anonymous Message Delivered!**\n\n"
+                "Your message was relayed safely. The recipient cannot see your identity.",
                 ephemeral=True,
             )
         except Exception as e:
             logger.error("Failed to relay message to %s: %s", self.target_user_id, e)
             await interaction.response.send_message(
-                "❌ **Could not deliver the message.** The recipient may have DMs closed or blocked the bot.",
+                "❌ **Could not deliver the message.**\n\n"
+                "The recipient may have DMs closed or blocked the bot.",
                 ephemeral=True,
             )
 
 
-class SetupModal(discord.ui.Modal, title="Secret Santa: Event Settings"):
+class SetupModal(discord.ui.Modal, title="Event Settings"):
     """Modal for configuring or updating Secret Santa event parameters."""
 
     def __init__(
@@ -200,7 +207,7 @@ class SetupModal(discord.ui.Modal, title="Secret Santa: Event Settings"):
         self.channel_id = channel_id
 
         self.budget_input = discord.ui.TextInput(
-            label="💰 Budget Ceiling",
+            label="💰 Budget Limit",
             placeholder="e.g. $25 - $35",
             default=existing_budget,
             required=False,
@@ -209,8 +216,8 @@ class SetupModal(discord.ui.Modal, title="Secret Santa: Event Settings"):
         self.add_item(self.budget_input)
 
         self.party_date_input = discord.ui.TextInput(
-            label="📅 Party Date & Time (Vietnam Time)",
-            placeholder="e.g. Dec 24, 19:00 or 2026-12-24 19:00",
+            label="📅 Party Date & Time",
+            placeholder="e.g. Dec 24, 19:00 (ICT / Vietnam Time)",
             default=existing_party_date,
             required=False,
             max_length=100,
@@ -218,7 +225,7 @@ class SetupModal(discord.ui.Modal, title="Secret Santa: Event Settings"):
         self.add_item(self.party_date_input)
 
         self.party_venue_input = discord.ui.TextInput(
-            label="📍 Party Venue / Location",
+            label="📍 Venue / Location",
             placeholder="e.g. Alice's House / Bistro 42",
             default=existing_party_venue,
             required=False,
@@ -227,8 +234,8 @@ class SetupModal(discord.ui.Modal, title="Secret Santa: Event Settings"):
         self.add_item(self.party_venue_input)
 
         self.deadline_input = discord.ui.TextInput(
-            label="⏰ Sign-Up Deadline (Auto-Draws Pairs)",
-            placeholder="e.g. 3d, 7 days, or 2026-12-10 20:00",
+            label="⏰ Sign-Up Deadline",
+            placeholder="e.g. 3d, 7 days, or Dec 10 20:00",
             default=existing_deadline,
             required=False,
             max_length=100,
@@ -305,14 +312,21 @@ class SetupModal(discord.ui.Modal, title="Secret Santa: Event Settings"):
         else:
             await self.repo.update_session_status(self.session_id, "REGISTRATION")
 
-        conf_msg = "✅ **Secret Santa event settings updated!** Channel card refreshed in-place." if updated_existing else "✅ **Secret Santa event initialized!** Registration card posted."
+        deadline_display = deadline_str or "Not set"
+        conf_msg = (
+            "✅ **Event Settings Updated!**\n\n"
+            f"• 💰 **Budget:** `{budget or 'Unset'}`\n"
+            f"• 📅 **Party Date:** `{party_date or 'Unset'}`\n"
+            f"• 📍 **Venue:** `{party_venue or 'Unset'}`\n"
+            f"• ⏰ **Deadline:** `{deadline_display}`"
+        )
         if deadline_epoch:
-            conf_msg += f"\n⏳ **Draw scheduled for:** {format_discord_timestamp(deadline_epoch)}"
+            conf_msg += f"\n\n⏳ **Draws:** <t:{deadline_epoch}:F> (<t:{deadline_epoch}:R>)"
 
         await interaction.response.send_message(conf_msg, ephemeral=True)
 
 
-class CreatePollModal(discord.ui.Modal, title="Create Secret Santa Poll"):
+class CreatePollModal(discord.ui.Modal, title="Create Poll"):
     """Modal allowing the host to create an interactive reaction voting poll."""
 
     def __init__(self, target_channel_id: Optional[int] = None):
@@ -328,9 +342,9 @@ class CreatePollModal(discord.ui.Modal, title="Create Secret Santa Poll"):
         self.add_item(self.question_input)
 
         self.options_input = discord.ui.TextInput(
-            label="📝 Choices (One per line, 2 to 10 options)",
+            label="📝 Choices (One per line, 2-10)",
             style=discord.TextStyle.paragraph,
-            placeholder="Option 1\nOption 2\nOption 3\n(e.g.\n$25\n$35\n$50)",
+            placeholder="• $25\n• $35\n• $50\n\n(Enter each choice on a new line)",
             required=True,
             max_length=1000,
         )
@@ -378,13 +392,15 @@ class CreatePollModal(discord.ui.Modal, title="Create Secret Santa Poll"):
                 except Exception as e:
                     logger.warning("Failed to add reaction %s to poll message: %s", emoji, e)
             await interaction.followup.send(
-                f"✅ **Reaction poll posted in {target_channel.mention}!**", ephemeral=True
+                f"✅ **Poll posted in {target_channel.mention}!**\n\n"
+                "Members can cast their votes using the reaction emojis below the message.",
+                ephemeral=True,
             )
         else:
             await interaction.followup.send("❌ Could not find target text channel to post poll.", ephemeral=True)
 
 
-class DeadlineModal(discord.ui.Modal, title="Set Sign-Up Deadline"):
+class DeadlineModal(discord.ui.Modal, title="Set Deadline"):
     """Modal allowing the host to set or change the sign-up deadline and auto-draw toggle."""
 
     def __init__(
@@ -398,8 +414,8 @@ class DeadlineModal(discord.ui.Modal, title="Set Sign-Up Deadline"):
         self.session_id = session_id
 
         self.deadline_input = discord.ui.TextInput(
-            label="⏰ Sign-Up Deadline (Vietnam Time / ICT)",
-            placeholder="e.g. 3d, 7 days, 24h, or 2026-12-10 20:00",
+            label="⏰ Sign-Up Deadline",
+            placeholder="e.g. 3d, 7 days, 24h, or Dec 15 20:00",
             default=existing_deadline,
             required=False,
             max_length=100,
@@ -407,8 +423,8 @@ class DeadlineModal(discord.ui.Modal, title="Set Sign-Up Deadline"):
         self.add_item(self.deadline_input)
 
         self.auto_draw_input = discord.ui.TextInput(
-            label="🤖 Auto-Draw on Time? (yes / no)",
-            placeholder="yes (draws pairs on deadline) or no (manual draw)",
+            label="🤖 Auto-Draw at Deadline?",
+            placeholder="yes (draws pairs on deadline) or no",
             default="yes",
             required=False,
             max_length=10,
@@ -448,15 +464,13 @@ class DeadlineModal(discord.ui.Modal, title="Set Sign-Up Deadline"):
                 signup_deadline_epoch=epoch,
                 auto_draw=auto_draw_val,
             )
-            auto_note = (
-                "• **Auto-Draw:** Enabled 🤖" if auto_draw_val else "• **Auto-Draw:** Disabled (manual `/secretsanta draw`)"
+            conf_msg = (
+                f"✅ **Sign-Up Deadline Configured!**\n\n"
+                f"• ⏰ **Deadline:** `{formatted}`\n"
+                f"• 🤖 **Auto-Draw:** `{'Enabled' if auto_draw_val else 'Disabled'}`\n"
+                f"• ⏳ **Countdown:** <t:{epoch}:F> (<t:{epoch}:R>)"
             )
-            await interaction.response.send_message(
-                f"✅ **Sign-up deadline updated!**\n"
-                f"• **Deadline:** {format_discord_timestamp(epoch)}\n"
-                f"{auto_note}",
-                ephemeral=True,
-            )
+            await interaction.response.send_message(conf_msg, ephemeral=True)
 
         # Refresh channel registration card in-place
         session = await self.repo.get_session_by_id(self.session_id)
@@ -477,14 +491,14 @@ class DeadlineModal(discord.ui.Modal, title="Set Sign-Up Deadline"):
 class RemindNoteModal(discord.ui.Modal):
     """Modal for inputting a custom note when sending reminders."""
 
-    def __init__(self, title: str, on_submit_callback):
-        super().__init__(title=title)
+    def __init__(self, title: str = "Announcement Note", on_submit_callback=None):
+        super().__init__(title=title[:45] if title else "Announcement Note")
         self.on_submit_callback = on_submit_callback
 
         self.note_input = discord.ui.TextInput(
-            label="📢 Announcement Note (Optional)",
+            label="📢 Custom Note (Optional)",
             style=discord.TextStyle.paragraph,
-            placeholder="Type a custom message or leave blank for standard reminder...",
+            placeholder="Type a custom message or leave blank for default reminder...",
             required=False,
             max_length=500,
         )
@@ -492,10 +506,11 @@ class RemindNoteModal(discord.ui.Modal):
 
     async def on_submit(self, interaction: discord.Interaction):
         note = self.note_input.value.strip() or None
-        await self.on_submit_callback(interaction, note)
+        if self.on_submit_callback:
+            await self.on_submit_callback(interaction, note)
 
 
-class BulkExclusionModal(discord.ui.Modal, title="Bulk Add Exclusion Rules"):
+class BulkExclusionModal(discord.ui.Modal, title="Bulk Exclusions"):
     """Modal allowing hosts to enter multiple pair or group exclusions at once."""
 
     def __init__(self, repo: "SantaRepository", session_id: int):
@@ -508,8 +523,9 @@ class BulkExclusionModal(discord.ui.Modal, title="Bulk Add Exclusion Rules"):
             style=discord.TextStyle.paragraph,
             placeholder=(
                 "@Alice, @Bob\n"
-                "@Charlie, @Dave\n"
-                "@Eve, @Frank, @Grace (group: none can pair)"
+                "@Charlie, @Dave\n\n"
+                "Group (mutual):\n"
+                "@Eve, @Frank, @Grace"
             ),
             required=True,
             max_length=2000,
@@ -540,9 +556,9 @@ class BulkExclusionModal(discord.ui.Modal, title="Bulk Add Exclusion Rules"):
         await view.setup_components(interaction.guild)
         embed = await view.build_exclusions_embed(interaction.guild)
 
-        msg = f"✅ **Processed exclusion rules:** Added {added_count} mutual exclusion pair(s)."
+        msg = f"✅ **Processed Exclusion Rules:** Added {added_count} mutual exclusion pair(s).\n"
         if unresolved:
-            msg += f"\n⚠️ **Could not resolve {len(unresolved)} line(s):**\n" + "\n".join(
+            msg += f"\n⚠️ **Could not resolve {len(unresolved)} line(s):**\n\n" + "\n".join(
                 f"• `{line}`" for line in unresolved[:5]
             )
 

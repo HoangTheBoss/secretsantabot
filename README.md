@@ -51,25 +51,33 @@ Built with **Python 3.13+**, **`discord.py`**, and **`aiosqlite`**.
 
 ---
 
-## ⚡ Quick Start Overview
+## ⚡ Quick Start Overview (Debian / Ubuntu / Linux)
 
 ```bash
 # 1. Clone repository & enter directory
 git clone <repo-url>
 cd budasecretsanta
 
-# 2. Create virtual environment
+# 2. Run automated setup (installs apt packages, Python venv, and dependencies)
+./setup.sh
+
+# 3. Configure your credentials
+nano .env  # Add your DISCORD_TOKEN, GUILD_ID, and SANTA_CHANNEL_ID
+
+# 4. Start the bot
+./start.sh
+
+# 5. (Optional) Install as a 24/7 systemd background service
+./scripts/install_service.sh
+```
+
+### Manual Setup (Any OS)
+
+```bash
 python3 -m venv .venv
-source .venv/bin/activate
-
-# 3. Install dependencies
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-
-# 4. Configure environment
 cp .env.example .env
-# Edit .env with your DISCORD_TOKEN, GUILD_ID, and SANTA_CHANNEL_ID
-
-# 5. Run the bot
 python3 run.py
 ```
 

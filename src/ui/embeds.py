@@ -526,3 +526,110 @@ def build_poll_embed(question: str, options: list[str]) -> tuple[discord.Embed, 
     return embed, emojis
 
 
+def build_host_control_panel_embed(
+    session: dict[str, Any],
+    participants: list[dict[str, Any]],
+    exclusions: Optional[list[tuple[int, int]]] = None,
+    guild: Optional[discord.Guild] = None,
+) -> discord.Embed:
+    """Build the interactive Host Control Panel embed with live feasibility diagnostics."""
+    status = session.get("status", "REGISTRATION")
+    total = len(participants)
+    wrapped = sum(
+        1 for p in participants
+        if p.get("gift_status") in ("WRAPPED", "READY", "AT_PARTY") or p.get("gift_wrapped")
+    )
+    budget = session.get("budget") or "Unset"
+    party_date = session.get("party_date") or "Unset"
+    party_venue = session.get("party_venue") or "Unset"
+
+    embed = discord.Embed(
+        title="🎅 Secret Santa — Host Control Panel",
+        description="Use the buttons below to configure, monitor, and execute this event.",
+        color=discord.Color.gold(),
+    )
+    logo_url = get_logo_url()
+    if logo_url:
+        embed.set_thumbnail(url=logo_url)
+
+    embed.add_field(name="Status", value=f"`{status}`", inline=True)
+    embed.add_field(name="Budget", value=f"`{budget}`", inline=True)
+    embed.add_field(name="Party Date", value=f"`{party_date}`", inline=True)
+    embed.add_field(name="Venue", value=f"`{party_venue}`", inline=True)
+    embed.add_field(name="Confirmed Santas", value=f"**{total} members**", inline=True)
+    embed.add_field(name="Gifts Wrapped", value=f"**{wrapped}/{total}**", inline=True)
+
+    deadline_epoch = session.get("signup_deadline_epoch")
+    if deadline_epoch:
+        embed.add_field(
+            name="⏰ Sign-Up Deadline",
+            value=f"<t:{deadline_epoch}:F>\n⏳ <t:{deadline_epoch}:R>",
+            inline=False,
+        )
+
+    # Feasibility status
+    if status == "REGISTRATION":
+        from src.services.matcher import validate_draw_feasibility
+
+        p_map = {
+            p["user_id"]: p.get("display_name") or p.get("username") or f"User {p['user_id']}"
+            for p in participants
+        }
+        if guild:
+            for p in participants:
+                m = guild.get_member(p["user_id"])
+                if m:
+                    p_map[p["user_id"]] = m.display_name
+
+        report = validate_draw_feasibility([p["user_id"] for p in participants], exclusions, names=p_map)
+        if report.status == "IMPOSSIBLE":
+            embed.color = discord.Color.red()
+            details_text = "\n" + "\n".join(f"• {d}" for d in report.details[:2]) if report.details else ""
+            embed.add_field(
+                name="🚨 Matching Feasibility: IMPOSSIBLE",
+                value=f"⚠️ **{report.headline}**{details_text}\n👉 *Adjust exclusions in '🚫 Exclusions' before drawing!*",
+                inline=False,
+            )
+        elif report.status == "WARNING":
+            embed.color = discord.Color.orange()
+            details_text = "\n" + "\n".join(f"• {d}" for d in report.details[:2]) if report.details else ""
+            embed.add_field(
+                name="⚠️ Matching Feasibility: TIGHT CONSTRAINTS",
+                value=f"⚡ **{report.headline}**{details_text}",
+                inline=False,
+            )
+        elif report.status == "READY":
+            embed.color = discord.Color.green()
+            embed.add_field(
+                name="🎯 Matching Feasibility: READY",
+                value="✅ **Valid Secret Santa circle is mathematically guaranteed!**",
+                inline=False,
+            )
+        else:
+            embed.color = discord.Color.gold()
+            embed.add_field(
+                name="🎯 Matching Feasibility",
+                value=f"⏳ *{report.headline}*",
+                inline=False,
+            )
+    elif status == "IN_PROGRESS":
+        embed.color = discord.Color.blue()
+        embed.add_field(
+            name="🎯 Matching Status",
+            value="🎉 **Pairings drawn & dispatched!** Santas are preparing gifts.",
+            inline=False,
+        )
+    elif status == "COMPLETED":
+        embed.color = discord.Color.purple()
+        embed.add_field(
+            name="🎯 Matching Status",
+            value="🏆 **Event completed!** All gifts delivered.",
+            inline=False,
+        )
+
+    footer_text = FOOTER_TEXT
+    embed.set_footer(text=f"{footer_text} • Click Refresh 🔄 to update live metrics.")
+    return embed
+
+
+

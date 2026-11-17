@@ -376,33 +376,17 @@ class AdminCog(commands.Cog):
             return
 
         from src.ui.views import HostControlPanel
+        from src.ui.embeds import build_host_control_panel_embed
 
         participants = await self.repo.get_all_participants(session["id"])
-        total = len(participants)
-        wrapped = sum(1 for p in participants if p.get("gift_status") in ("WRAPPED", "READY", "AT_PARTY"))
+        exclusions = await self.repo.get_exclusions(session["id"])
 
-        embed = discord.Embed(
-            title="🎛️ Secret Santa Host Control Dashboard",
-            description=(
-                "Welcome to the host control center! Use the interactive buttons below "
-                "to manage your Secret Santa event with zero slash-command memorization."
-            ),
-            color=discord.Color.gold(),
+        embed = build_host_control_panel_embed(
+            session=session,
+            participants=participants,
+            exclusions=exclusions,
+            guild=interaction.guild,
         )
-        embed.add_field(name="Status", value=f"`{session.get('status')}`", inline=True)
-        embed.add_field(name="Budget", value=f"`{session.get('budget') or 'Unset'}`", inline=True)
-        embed.add_field(name="Party Date", value=f"`{session.get('party_date') or 'Unset'}`", inline=True)
-        embed.add_field(name="Venue", value=f"`{session.get('party_venue') or 'Unset'}`", inline=True)
-        embed.add_field(name="Confirmed Santas", value=f"**{total} members**", inline=True)
-        embed.add_field(name="Gifts Wrapped", value=f"**{wrapped}/{total}**", inline=True)
-
-        deadline_epoch = session.get("signup_deadline_epoch")
-        if deadline_epoch:
-            embed.add_field(
-                name="⏰ Sign-Up Deadline",
-                value=f"<t:{deadline_epoch}:F>\n⏳ <t:{deadline_epoch}:R>",
-                inline=False,
-            )
 
         view = HostControlPanel(self.repo, session["id"])
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
@@ -445,24 +429,60 @@ class AdminCog(commands.Cog):
             return
 
         exclusions = await self.repo.get_exclusions(session["id"])
-        if not exclusions:
-            await interaction.response.send_message("ℹ️ No exclusions are currently configured.", ephemeral=True)
-            return
+        participants = await self.repo.get_all_participants(session["id"])
+        p_map = {
+            p["user_id"]: (
+                interaction.guild.get_member(p["user_id"]).display_name
+                if interaction.guild and interaction.guild.get_member(p["user_id"])
+                else None
+            )
+            or p.get("display_name")
+            or p.get("username")
+            or f"User {p['user_id']}"
+            for p in participants
+        }
 
         lines = []
-        guild = interaction.guild
         for a_id, b_id in exclusions:
-            m_a = guild.get_member(a_id) if guild else None
-            m_b = guild.get_member(b_id) if guild else None
-            name_a = m_a.display_name if m_a else f"User {a_id}"
-            name_b = m_b.display_name if m_b else f"User {b_id}"
+            name_a = p_map.get(a_id, f"User {a_id}")
+            name_b = p_map.get(b_id, f"User {b_id}")
             lines.append(f"• **{name_a}** ⛔ **{name_b}**")
 
         embed = discord.Embed(
             title="🚫 Configured Exclusion Rules",
-            description="\n".join(lines),
+            description="\n".join(lines) if lines else "*No exclusion rules configured.*",
             color=discord.Color.orange(),
         )
+
+        from src.services.matcher import validate_draw_feasibility
+
+        report = validate_draw_feasibility([p["user_id"] for p in participants], exclusions, names=p_map)
+        if report.status == "IMPOSSIBLE":
+            embed.color = discord.Color.red()
+            details_text = "\n" + "\n".join(f"• {d}" for d in report.details[:3]) if report.details else ""
+            embed.add_field(
+                name="🚨 Matching Feasibility: IMPOSSIBLE",
+                value=f"⚠️ **{report.headline}**{details_text}",
+                inline=False,
+            )
+        elif report.status == "WARNING":
+            embed.color = discord.Color.gold()
+            details_text = "\n" + "\n".join(f"• {d}" for d in report.details[:3]) if report.details else ""
+            embed.add_field(
+                name="⚠️ Matching Feasibility: TIGHT CONSTRAINTS",
+                value=f"⚡ **{report.headline}**{details_text}",
+                inline=False,
+            )
+        elif report.status == "READY":
+            embed.color = discord.Color.green()
+            embed.add_field(
+                name="🎯 Matching Feasibility: READY",
+                value="✅ **Valid Secret Santa circle is mathematically guaranteed!**",
+                inline=False,
+            )
+        else:
+            embed.add_field(name="ℹ️ Matching Feasibility", value=f"⏳ *{report.headline}*", inline=False)
+
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @group.command(name="draw", description="Close signups, compute secret pairings, and dispatch DMs to Santas.")
@@ -562,3 +582,32 @@ class AdminCog(commands.Cog):
             await interaction.response.send_message(
                 f"❌ Failed to send DM to {member.mention}: {e}", ephemeral=True
             )
+
+    @group.command(name="backup", description="Create a database snapshot and migration bundle for moving host or dev safety.")
+    @is_admin()
+    async def create_backup_command(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+
+        from src.services.backup_service import create_migration_bundle, list_backups
+        from src.config import DATABASE_PATH, ASSETS_DIR
+
+        bundle_path = create_migration_bundle(DATABASE_PATH, ASSETS_DIR)
+        backups = list_backups(DATABASE_PATH)
+
+        embed = discord.Embed(
+            title="📦 Secret Santa Backup & Migration Bundle",
+            description=(
+                "A hot, crash-safe snapshot of your database and branding assets has been created.\n\n"
+                "**To migrate or move host:**\n"
+                "1. Download the attached `.zip` bundle.\n"
+                "2. Extract onto your new host server or container.\n"
+                "3. Run `python3 run.py` (all active sign-ups, pairings, and settings are restored)."
+            ),
+            color=discord.Color.green(),
+        )
+        embed.add_field(name="Bundle File", value=f"`{bundle_path.name}`", inline=True)
+        embed.add_field(name="Size", value=f"`{round(bundle_path.stat().st_size / 1024, 1)} KB`", inline=True)
+        embed.add_field(name="Local Backups", value=f"**{len(backups)}** retained in `data/backups/`", inline=True)
+
+        file = discord.File(str(bundle_path), filename=bundle_path.name)
+        await interaction.followup.send(embed=embed, file=file, ephemeral=True)

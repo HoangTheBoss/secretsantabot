@@ -342,6 +342,38 @@ class SantaRepository:
                 row = await cursor.fetchone()
                 return dict(row) if row else None
 
+    async def get_active_pairing_by_santa(self, santa_id: int) -> Optional[dict[str, Any]]:
+        """Look up the active IN_PROGRESS pairing for a Santa across sessions (used by persistent DM views)."""
+        async with get_connection(self.db_path) as db:
+            async with db.execute(
+                """
+                SELECT p.*, s.status as session_status, s.guild_id
+                FROM pairings p
+                JOIN game_sessions s ON p.session_id = s.id
+                WHERE p.santa_id = ? AND s.status = 'IN_PROGRESS'
+                ORDER BY p.id DESC LIMIT 1
+                """,
+                (santa_id,),
+            ) as cursor:
+                row = await cursor.fetchone()
+                return dict(row) if row else None
+
+    async def get_active_pairing_by_baby(self, baby_id: int) -> Optional[dict[str, Any]]:
+        """Look up the active IN_PROGRESS pairing for a Baby across sessions (used by persistent reply views)."""
+        async with get_connection(self.db_path) as db:
+            async with db.execute(
+                """
+                SELECT p.*, s.status as session_status, s.guild_id
+                FROM pairings p
+                JOIN game_sessions s ON p.session_id = s.id
+                WHERE p.baby_id = ? AND s.status = 'IN_PROGRESS'
+                ORDER BY p.id DESC LIMIT 1
+                """,
+                (baby_id,),
+            ) as cursor:
+                row = await cursor.fetchone()
+                return dict(row) if row else None
+
     async def get_all_pairings(self, session_id: int) -> list[dict[str, Any]]:
         """Get all pairings in a session (with participant details)."""
         async with get_connection(self.db_path) as db:

@@ -16,13 +16,19 @@ from src.config import (
     EVENT_NAME,
     get_base_url,
 )
-from src.database.db import init_db
+from src.database.db import init_db, checkpoint_db
 from src.database.repo import SantaRepository
 from src.cogs.admin_cog import AdminCog
 from src.cogs.user_cog import UserCog
 from src.cogs.reminder_cog import ReminderCog
 from src.services.asset_server import AssetServer
-from src.ui.views import RegistrationView
+from src.ui.views import (
+    RegistrationView,
+    SantaDmView,
+    BabyReplyView,
+    HostControlPanel,
+    MyStatusView,
+)
 
 
 logger = logging.getLogger("secretsanta.bot")
@@ -66,16 +72,20 @@ class SecretSantaBot(commands.Bot):
         await self.add_cog(ReminderCog(self, self.repo))
 
 
-        # Re-attach persistent views for active session if one exists
-        if GUILD_ID:
-            active_session = await self.repo.get_active_session(GUILD_ID)
-            if (
-                active_session
-                and active_session.get("status") in ("REGISTRATION", "IN_PROGRESS")
-                and active_session.get("registration_message_id")
-            ):
-                logger.info("Re-attaching persistent view for active session %s", active_session["id"])
-                self.add_view(RegistrationView(self.repo, active_session["id"]))
+        # Re-attach all persistent views so interactions survive restarts, crashes, and dev reloads
+        logger.info("Registering persistent views for Discord Gateway recovery...")
+        self.add_view(RegistrationView(self.repo, 0))
+        self.add_view(SantaDmView(self.repo))
+        self.add_view(BabyReplyView(self.repo))
+        self.add_view(HostControlPanel(self.repo, 0))
+        self.add_view(MyStatusView(self.repo, 0))
+
+        # Specifically re-attach active channel registration views
+        active_sessions = await self.repo.get_all_active_sessions()
+        for s in active_sessions:
+            if s.get("status") in ("REGISTRATION", "IN_PROGRESS") and s.get("registration_message_id"):
+                logger.info("Re-attaching channel RegistrationView for active session %s", s["id"])
+                self.add_view(RegistrationView(self.repo, s["id"]))
 
         # Sync application commands
         if GUILD_ID:
@@ -94,7 +104,13 @@ class SecretSantaBot(commands.Bot):
         logger.info("=" * 50)
 
     async def close(self):
-        """Clean up background services before closing the bot client."""
+        """Clean up background services and checkpoint SQLite WAL before closing the bot client."""
+        logger.info("Bot shutting down: checkpointing database and stopping services...")
+        try:
+            await checkpoint_db(DATABASE_PATH)
+        except Exception as e:
+            logger.error("Error checkpointing database on shutdown: %s", e)
+
         if self.asset_server:
             await self.asset_server.stop()
         await super().close()

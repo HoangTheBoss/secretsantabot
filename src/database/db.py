@@ -91,12 +91,24 @@ CREATE INDEX IF NOT EXISTS idx_relay_session ON relay_messages(session_id);
 
 
 async def init_db(db_path: str = DATABASE_PATH) -> None:
-    """Initialize database tables, columns, and indexes."""
+    """Initialize database tables, columns, and indexes with WAL mode and hot backup on startup."""
     path = Path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
+
+    # 1. Automatic pre-startup backup if db exists and has content (dev in prod safety net)
+    if path.exists() and path.stat().st_size > 0:
+        from src.services.backup_service import create_database_backup
+        create_database_backup(db_path)
+
     logger.info("Initializing database schema at %s", db_path)
 
     async with aiosqlite.connect(db_path) as db:
+        # WAL mode & concurrency pragmas
+        await db.execute("PRAGMA journal_mode = WAL;")
+        await db.execute("PRAGMA busy_timeout = 10000;")
+        await db.execute("PRAGMA synchronous = NORMAL;")
+        await db.execute("PRAGMA foreign_keys = ON;")
+
         await db.executescript(SCHEMA_SQL)
 
         # Check and add columns if upgrading existing db
@@ -130,17 +142,26 @@ async def init_db(db_path: str = DATABASE_PATH) -> None:
         except Exception:
             pass  # Already exists
 
-
-
         try:
             await db.execute("ALTER TABLE pairings ADD COLUMN last_reminded_at TIMESTAMP;")
         except Exception:
             pass  # Already exists
 
-
-
         await db.commit()
-    logger.info("Database schema initialized successfully.")
+    logger.info("Database schema initialized successfully with WAL journal mode.")
+
+
+async def checkpoint_db(db_path: str = DATABASE_PATH) -> None:
+    """Flush and truncate WAL pages to make the main sqlite file 100% self-contained on shutdown."""
+    path = Path(db_path)
+    if not path.exists():
+        return
+    try:
+        async with aiosqlite.connect(db_path) as db:
+            await db.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+            logger.info("Database WAL successfully checkpointed and truncated.")
+    except Exception as e:
+        logger.warning("Could not checkpoint database WAL: %s", e)
 
 
 @asynccontextmanager
@@ -149,4 +170,5 @@ async def get_connection(db_path: str = DATABASE_PATH) -> AsyncGenerator[aiosqli
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
         await db.execute("PRAGMA foreign_keys = ON;")
+        await db.execute("PRAGMA busy_timeout = 10000;")
         yield db

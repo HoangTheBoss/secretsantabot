@@ -46,13 +46,22 @@ To bind the bot to your private setup, you will need Discord developer IDs:
 
 ---
 
-## 3. Local Environment Setup
+## 3. Installation & Setup
 
-### Prerequisites
-- **Python 3.11+** (Tested on Python 3.13)
-- `pip` and virtual environment support (`venv`)
+### Option A: Debian & Debian-Based Systems (Debian, Ubuntu, Mint, Raspberry Pi OS)
 
-### Installation Steps
+Run the automated installer:
+```bash
+# Clone the repository
+git clone <your-repo-url>
+cd budasecretsanta
+
+# Run automated Debian setup
+# (Updates apt, installs python3-venv, pip, build tools, sets up .venv and requirements)
+./setup.sh
+```
+
+### Option B: Manual Setup (Any OS)
 
 ```bash
 # Clone the repository
@@ -69,7 +78,7 @@ pip install -r requirements.txt
 
 ### Configuration (`.env`)
 
-Copy the template file:
+Copy the template file (done automatically by `./setup.sh`):
 ```bash
 cp .env.example .env
 ```
@@ -125,21 +134,36 @@ server {
 
 ## 4. Running the Bot
 
+### Quick Start
 ```bash
-python3 run.py
+./start.sh
+# Or manually with activated venv: python3 run.py
 ```
 
 When started, the bot will:
 1. Connect to Discord and log in as your bot application.
-2. Initialize and migrate the SQLite database in `data/secretsanta.db`.
-3. Sync slash commands with your private server (`GUILD_ID`) instantly (guild-scoped sync takes seconds, unlike global sync which can take up to an hour).
-4. Verify channel binding and print readiness logs.
+2. Checkpoint and migrate SQLite database in `data/secretsanta.db` with WAL mode enabled.
+3. Automatically take a hot restore backup in `data/backups/`.
+4. Register and recover persistent interactive views (Santa DMs, wishlists, registration cards).
+5. Sync slash commands with your private server (`GUILD_ID`) instantly.
 
 ---
 
-## 5. Deployment Options (Self-Hosting for Small Groups)
+## 5. 24/7 Production Deployment on Debian / Ubuntu (Systemd)
 
-Since this bot is for private friend groups:
-- **Local Machine:** Run on your laptop or home machine during the event weeks. SQLite will retain state between launches.
-- **Raspberry Pi / Home Server:** Run as a `systemd` service or tmux session.
-- **Free/Cheap Cloud VPS (Fly.io, Railway, DigitalOcean):** Mount a persistent volume for `data/secretsanta.db` and run as a lightweight Python container.
+To run the bot as a background service that automatically restarts on system reboot or crash:
+
+```bash
+# Install and enable the systemd service
+./scripts/install_service.sh
+```
+
+### Systemd Management Commands
+
+| Action | Command |
+|---|---|
+| **View Live Logs** | `journalctl -u budasecretsanta -f` |
+| **Check Status** | `sudo systemctl status budasecretsanta` |
+| **Restart Bot** | `sudo systemctl restart budasecretsanta` |
+| **Stop Bot** | `sudo systemctl stop budasecretsanta` |
+| **Start Bot** | `sudo systemctl start budasecretsanta` |
