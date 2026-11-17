@@ -8,6 +8,8 @@ from .embeds import (
     build_public_reminder_embed,
     build_dm_reminder_embed,
     build_milestone_reminder_embed,
+    build_poll_embed,
+    POLL_NUMBER_EMOJIS,
 )
 
 from .modals import (
@@ -38,6 +40,8 @@ __all__ = [
     "build_public_reminder_embed",
     "build_dm_reminder_embed",
     "build_milestone_reminder_embed",
+    "build_poll_embed",
+    "POLL_NUMBER_EMOJIS",
     "WishlistModal",
     "AnonymousMessageModal",
     "SetupModal",

@@ -313,7 +313,7 @@ class SetupModal(discord.ui.Modal, title="Secret Santa: Event Settings"):
 
 
 class CreatePollModal(discord.ui.Modal, title="Create Secret Santa Poll"):
-    """Modal allowing the host to create an interactive channel poll."""
+    """Modal allowing the host to create an interactive reaction voting poll."""
 
     def __init__(self, target_channel_id: Optional[int] = None):
         super().__init__()
@@ -328,42 +328,36 @@ class CreatePollModal(discord.ui.Modal, title="Create Secret Santa Poll"):
         self.add_item(self.question_input)
 
         self.options_input = discord.ui.TextInput(
-            label="📝 Choices (One per line, 2 to 5 options)",
+            label="📝 Choices (One per line, 2 to 10 options)",
             style=discord.TextStyle.paragraph,
             placeholder="Option 1\nOption 2\nOption 3\n(e.g.\n$25\n$35\n$50)",
             required=True,
-            max_length=500,
+            max_length=1000,
         )
         self.add_item(self.options_input)
 
     async def on_submit(self, interaction: discord.Interaction):
-        from src.ui.views import PollView
+        await interaction.response.defer(ephemeral=True)
 
         question = self.question_input.value.strip()
         raw_options = [line.strip() for line in self.options_input.value.split("\n") if line.strip()]
 
         if len(raw_options) < 2:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "⚠️ Please provide at least 2 options (one per line).", ephemeral=True
             )
             return
 
-        if len(raw_options) > 5:
-            await interaction.response.send_message(
-                "⚠️ A maximum of 5 options can fit on Discord button rows. Please reduce to 5 or fewer.",
+        if len(raw_options) > 10:
+            await interaction.followup.send(
+                "⚠️ A maximum of 10 options is supported for reaction polling. Please reduce to 10 or fewer.",
                 ephemeral=True,
             )
             return
 
-        embed = discord.Embed(
-            title=f"📊 Vote: {question}",
-            description="Click a button below to cast or change your vote!",
-            color=discord.Color.blue(),
-        )
-        for i, opt in enumerate(raw_options):
-            embed.add_field(name=f"Option {i + 1}", value=f"**{opt}**", inline=True)
+        from src.ui.embeds import build_poll_embed
 
-        view = PollView(question=question, options=raw_options)
+        embed, emojis = build_poll_embed(question=question, options=raw_options)
 
         target_channel = (
             interaction.client.get_channel(self.target_channel_id)
@@ -377,12 +371,17 @@ class CreatePollModal(discord.ui.Modal, title="Create Secret Santa Poll"):
                 target_channel = interaction.channel
 
         if target_channel and isinstance(target_channel, discord.TextChannel):
-            await target_channel.send(embed=embed, view=view)
-            await interaction.response.send_message(
-                f"✅ **Poll posted in {target_channel.mention}!**", ephemeral=True
+            poll_msg = await target_channel.send(embed=embed)
+            for emoji in emojis:
+                try:
+                    await poll_msg.add_reaction(emoji)
+                except Exception as e:
+                    logger.warning("Failed to add reaction %s to poll message: %s", emoji, e)
+            await interaction.followup.send(
+                f"✅ **Reaction poll posted in {target_channel.mention}!**", ephemeral=True
             )
         else:
-            await interaction.response.send_message(embed=embed, view=view)
+            await interaction.followup.send("❌ Could not find target text channel to post poll.", ephemeral=True)
 
 
 class DeadlineModal(discord.ui.Modal, title="Set Sign-Up Deadline"):

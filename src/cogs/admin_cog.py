@@ -121,11 +121,11 @@ class AdminCog(commands.Cog):
 
 
 
-    @group.command(name="poll", description="Post an interactive voting poll (opens modal if options left empty).")
+    @group.command(name="poll", description="Post an interactive reaction voting poll (opens modal if empty).")
     @is_admin()
     @app_commands.describe(
         question="Poll question (leave empty to open interactive modal)",
-        options="Comma-separated options (leave empty to open interactive modal)",
+        options="Comma or newline-separated options (leave empty to open interactive modal, up to 10)",
     )
     async def run_poll(
         self,
@@ -143,23 +143,49 @@ class AdminCog(commands.Cog):
             await interaction.response.send_modal(modal)
             return
 
-        opts = [o.strip() for o in options.split(",") if o.strip()]
-        if len(opts) < 2:
+        raw_opts = []
+        for line in options.split("\n"):
+            for item in line.split(","):
+                if item.strip():
+                    raw_opts.append(item.strip())
+
+        if len(raw_opts) < 2:
             await interaction.response.send_message(
-                "⚠️ Please provide at least 2 comma-separated options.", ephemeral=True
+                "⚠️ Please provide at least 2 options (separated by commas or newlines).", ephemeral=True
             )
             return
 
-        embed = discord.Embed(
-            title=f"📊 Vote: {question}",
-            description="Click a button below to cast or change your vote!",
-            color=discord.Color.blue(),
-        )
-        for i, opt in enumerate(opts[:5]):
-            embed.add_field(name=f"Option {i + 1}", value=f"**{opt}**", inline=True)
+        if len(raw_opts) > 10:
+            await interaction.response.send_message(
+                "⚠️ A maximum of 10 options is supported for reaction polling.", ephemeral=True
+            )
+            return
 
-        view = PollView(question=question, options=opts)
-        await interaction.response.send_message(embed=embed, view=view)
+        await interaction.response.defer(ephemeral=True)
+
+        from src.ui.embeds import build_poll_embed
+
+        embed, emojis = build_poll_embed(question=question, options=raw_opts)
+
+        target_channel = self.bot.get_channel(ch_id) if ch_id else interaction.channel
+        if not target_channel and ch_id:
+            try:
+                target_channel = await self.bot.fetch_channel(ch_id)
+            except Exception:
+                target_channel = interaction.channel
+
+        if target_channel and isinstance(target_channel, discord.TextChannel):
+            poll_msg = await target_channel.send(embed=embed)
+            for emoji in emojis:
+                try:
+                    await poll_msg.add_reaction(emoji)
+                except Exception as e:
+                    logger.warning("Could not add reaction %s to poll: %s", emoji, e)
+            await interaction.followup.send(
+                f"✅ **Reaction poll posted in {target_channel.mention}!**", ephemeral=True
+            )
+        else:
+            await interaction.followup.send("❌ Could not find target text channel to post poll.", ephemeral=True)
 
 
     @group.command(name="set_details", description="Update budget, date, or venue for the active session.")
