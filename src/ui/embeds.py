@@ -490,23 +490,21 @@ def build_dm_reminder_embed(
     return embed
 
 
-POLL_NUMBER_EMOJIS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+from src.utils.poll_detector import detect_poll_emojis, ABC_EMOJIS, NUMBER_EMOJIS, BUDGET_EMOJIS
+
+POLL_NUMBER_EMOJIS = NUMBER_EMOJIS
 
 
 def build_poll_embed(question: str, options: list[str]) -> tuple[discord.Embed, list[str]]:
-    """Build a branded embed for reaction-based polling and return the corresponding emojis."""
+    """Build a branded embed for reaction-based polling using smart keyword or ABC emojis."""
     theme_color = THEME_COLOR
     color = resolve_color(theme_color, default=discord.Color.blue())
     logo_url = get_logo_url()
     footer_text = FOOTER_TEXT
 
-    emojis: list[str] = []
-    option_lines: list[str] = []
+    emojis, cleaned_labels = detect_poll_emojis(question, options[:10])
 
-    for i, opt in enumerate(options[:10]):
-        emoji = POLL_NUMBER_EMOJIS[i]
-        emojis.append(emoji)
-        option_lines.append(f"{emoji} **{opt}**")
+    option_lines = [f"{emoji} **{label}**" for emoji, label in zip(emojis, cleaned_labels)]
 
     description = (
         "Cast your vote by reacting with the corresponding emoji below!\n\n"

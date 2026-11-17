@@ -20,13 +20,13 @@ def test_create_poll_modal_init():
 
 
 def test_build_poll_embed():
-    from src.ui.embeds import build_poll_embed, POLL_NUMBER_EMOJIS
+    from src.ui.embeds import build_poll_embed
 
     options = ["$20 - $30", "$30 - $50", "$50+"]
     embed, emojis = build_poll_embed(question="What is the budget ceiling?", options=options)
 
     assert "What is the budget ceiling?" in embed.title
-    assert emojis == ["1️⃣", "2️⃣", "3️⃣"]
+    assert emojis == ["🪙", "💵", "💸"]
     for emoji in emojis:
         assert emoji in embed.description
     for opt in options:
@@ -35,14 +35,15 @@ def test_build_poll_embed():
 
 
 def test_build_poll_embed_up_to_10_options():
-    from src.ui.embeds import build_poll_embed, POLL_NUMBER_EMOJIS
+    from src.ui.embeds import build_poll_embed, ABC_EMOJIS
 
     options = [f"Option {i}" for i in range(1, 11)]
     embed, emojis = build_poll_embed(question="Vote for date", options=options)
 
     assert len(emojis) == 10
-    assert emojis == POLL_NUMBER_EMOJIS
-    assert "🔟" in embed.description
+    assert emojis == ABC_EMOJIS[:10]
+    assert "🇦" in embed.description
+    assert "🇯" in embed.description
 
 
 async def test_create_poll_modal_on_submit():
@@ -74,7 +75,7 @@ async def test_create_poll_modal_on_submit():
     mock_channel.send.assert_called_once()
     assert mock_poll_msg.add_reaction.call_count == 3
     reactions_added = [call[0][0] for call in mock_poll_msg.add_reaction.call_args_list]
-    assert reactions_added == ["1️⃣", "2️⃣", "3️⃣"]
+    assert reactions_added == ["🇦", "🇧", "🇨"]
     mock_interaction.followup.send.assert_called_once()
 
 
